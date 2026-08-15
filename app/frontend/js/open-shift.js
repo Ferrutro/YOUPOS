@@ -9,7 +9,7 @@ const user = getUser();
 document.body.innerHTML = `
   <div class="login-screen">
     <div class="login-card">
-      <div class="brand"><img src="/img/YOUPOS.png" alt="Mi POS" style="height:48px; width:auto; display:block; margin:0 auto 6px;" /> Mi POS</div>
+      <div class="brand"><img src="/img/YOUPOS.png" alt="Mi POS" style="height:64px; width:auto; display:block; margin:0 auto 8px;" /> Mi POS</div>
       <div class="subtitle">Hola, ${user.name}. Antes de vender, abrí tu turno de caja.</div>
       <div class="field">
         <label for="opening-amount">Fondo inicial</label>
@@ -46,7 +46,15 @@ openBtn.addEventListener('click', async () => {
   openBtn.textContent = 'Abriendo…';
   try {
     await api.post('/api/cash-sessions/open', { opening_amount: amount });
-    window.location.href = '/pos.html';
+    openBtn.textContent = 'Turno abierto — entrando…';
+    window.location.assign('/pos.html');
+    // Red de seguridad: si por lo que sea la navegación automática no
+    // ocurre (el turno ya quedó abierto de todos modos), dejamos un enlace
+    // directo en vez de dejar a alguien varado en esta pantalla.
+    setTimeout(() => {
+      openBtn.outerHTML =
+        '<a href="/pos.html" class="primary" style="display:block; width:100%; padding:9px 16px; border-radius:var(--radius-sm); text-decoration:none; text-align:center; box-sizing:border-box;">Ir al punto de venta →</a>';
+    }, 1200);
   } catch (err) {
     toast(err.message, 'error');
     openBtn.disabled = false;

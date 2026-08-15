@@ -131,7 +131,10 @@ function renderCurrent() {
     try {
       const result = await api.post(`/api/cash-sessions/${currentSession.id}/close`, { closing_amount, notes });
       toast(`Turno cerrado. Diferencia: ${formatMoney(result.difference, settings.currency)}`, result.difference === 0 ? 'success' : 'info');
-      loadAll();
+      // Sin turno abierto no se puede vender — se manda derecho a abrir el
+      // siguiente (con un respiro para que se alcance a leer el toast de
+      // arriba con la diferencia del cierre).
+      setTimeout(() => { window.location.href = '/open-shift.html'; }, 1400);
     } catch (err) {
       toast(err.message, 'error');
     }

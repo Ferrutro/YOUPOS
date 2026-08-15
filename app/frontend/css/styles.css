@@ -25,6 +25,7 @@
   --serious: #ec835a;
   --critical: #d03b3b;
   --success-text: #006300;
+  --brand-accent: #2e7d32; /* verde del logo YOUPOS */
 
   --radius-sm: 6px;
   --radius-md: 10px;
@@ -118,10 +119,12 @@ label {
 
 /* --- Layout de la app ---
    Cada pantalla (Ventas, Inventario, Caja, Configuración...) es dueña de
-   toda la página — sin barra lateral fija; navegar entre pantallas se hace
-   desde el menú del punto de venta. Solo queda el botón fijo de "Cerrar
-   sesión" (ver layout.js), por eso el padding de arriba es más alto: deja
-   lugar para que no se encime con lo primero que haya en la pantalla. */
+   toda la página — sin barra lateral fija. En su lugar, arriba a la
+   derecha hay un botón de "3 rayitas" (igual en TODAS las pantallas,
+   incluido el punto de venta) que abre el mismo menú deslizante para
+   moverse a cualquier otra sección o cerrar sesión — ver layout.js. Por
+   eso el padding de arriba es más alto: deja lugar para que no se encime
+   con lo primero que haya en la pantalla. */
 
 .app-shell {
   min-height: 100vh;
@@ -132,6 +135,80 @@ label {
   max-width: 1400px;
   margin: 0 auto;
 }
+
+.icon-btn {
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text-primary);
+}
+.icon-btn:hover { background: var(--gridline); }
+.icon-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.icon-btn:disabled:hover { background: var(--surface-2); }
+
+/* ---------- Menú de navegación (panel deslizante desde la derecha) ---------- */
+.pos-drawer-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(11, 11, 11, 0.4);
+  z-index: 1200;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.pos-drawer-overlay.open { opacity: 1; }
+
+.pos-side-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 260px;
+  max-width: 82vw;
+  background: var(--surface-2);
+  box-shadow: -3px 0 20px rgba(11, 11, 11, 0.18);
+  z-index: 1201;
+  display: flex;
+  flex-direction: column;
+  transform: translateX(100%);
+  transition: transform 0.22s ease;
+}
+.pos-side-drawer.open { transform: translateX(0); }
+
+.pos-drawer-header {
+  padding: 22px 18px;
+  background: var(--brand-accent);
+  color: #fff;
+  flex-shrink: 0;
+}
+.pos-drawer-header .biz-name { font-size: 17px; font-weight: 700; line-height: 1.25; }
+.pos-drawer-header .user-name { font-size: 12.5px; opacity: 0.85; margin-top: 3px; }
+
+.pos-drawer-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+.pos-drawer-list a {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 13px 18px;
+  color: var(--text-primary);
+  text-decoration: none;
+  font-size: 14.5px;
+  font-weight: 500;
+}
+.pos-drawer-list a:hover { background: var(--page-plane); }
+.pos-drawer-list a svg { flex-shrink: 0; color: var(--text-secondary); }
+.pos-drawer-list a.logout { border-top: 1px solid var(--border); margin-top: 4px; color: var(--critical); }
+.pos-drawer-list a.logout svg { color: var(--critical); }
 
 .page-header {
   display: flex;

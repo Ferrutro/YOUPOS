@@ -1,6 +1,7 @@
 import { api, requireAuth, getUser, clearSession, toast, formatMoney, formatDate } from './api.js';
 import { icon } from './icons.js';
 import { applyToolbarLayout, resolveToolbarLayout, defaultIdsForSection } from './pos-buttons-catalog.js';
+import { openNavDrawer } from './layout.js';
 
 if (!requireAuth()) throw new Error('no auth');
 
@@ -78,7 +79,7 @@ const canSeeReports = ['admin', 'manager'].includes(user.role);
 // Marca de "Mi POS" (el software), discreta, centrada arriba en la barra —
 // distinta del logo del negocio del cliente (ese se configura aparte, en
 // Configuración → Negocio, y sale en los tickets impresos).
-const MIPOS_BRAND_MARK = `<img src="/img/YOUPOS.png" alt="Mi POS" style="height:40px; width:auto; display:block;" />`;
+const MIPOS_BRAND_MARK = `<img src="/img/YOUPOS.png" alt="Mi POS" style="height:50px; width:auto; display:block;" />`;
 
 shell.innerHTML = `
   <div class="pos-topbar">
@@ -174,7 +175,7 @@ const functionToolbar = document.getElementById('function-toolbar');
 const bottomToolbar = document.getElementById('bottom-toolbar');
 const ticketQuickActions = document.getElementById('ticket-quickactions');
 
-document.getElementById('settings-menu-btn').addEventListener('click', () => openOperationsMenu());
+document.getElementById('settings-menu-btn').addEventListener('click', () => openNavDrawer());
 
 // ---------- Panel del ticket redimensionable (arrastrar con mouse o dedo,
 // como el control de una línea de tiempo de video) ----------
@@ -317,56 +318,6 @@ function buildFunctionToolbar() {
 
 function buildBottomToolbar() {
   renderToolbar(bottomToolbar, applyToolbarLayout(buildAllToolbarButtons(), effectiveIds('bottom')));
-}
-
-const ROLE_LABELS = { admin: 'Administrador', manager: 'Gerente', cashier: 'Cajero' };
-
-// Menú de navegación como panel deslizante desde la derecha (no un
-// recuadro flotante) — con el nombre del negocio y el usuario en sesión
-// arriba, igual que el menú "hamburguesa" de cualquier POS.
-function openOperationsMenu() {
-  document.querySelectorAll('.pos-drawer-overlay, .pos-side-drawer').forEach((m) => m.remove());
-  const items = [
-    { label: 'Ventas / Tickets', ico: 'ticket', href: '/sales.html', show: true },
-    { label: 'Inventario', ico: 'box', href: '/inventory.html', show: canManageCatalog },
-    { label: 'Corte de caja', ico: 'scissors', href: '/cash.html', show: true },
-    { label: 'Configuración', ico: 'settings', href: '/settings.html', show: user.role === 'admin' },
-  ].filter((i) => i.show);
-
-  const overlay = document.createElement('div');
-  overlay.className = 'pos-drawer-overlay';
-
-  const drawer = document.createElement('div');
-  drawer.className = 'pos-side-drawer';
-  drawer.innerHTML = `
-    <div class="pos-drawer-header">
-      <div class="biz-name">${settings.business_name || 'Mi Negocio'}</div>
-      <div class="user-name">${user.name} · ${ROLE_LABELS[user.role] || user.role}</div>
-    </div>
-    <nav class="pos-drawer-list">
-      ${items.map((i) => `<a href="${i.href}">${icon(i.ico, 18)}<span>${i.label}</span></a>`).join('')}
-    </nav>
-  `;
-
-  shell.appendChild(overlay);
-  shell.appendChild(drawer);
-  // Se agregan las clases "open" un ratito después de insertarlas (no en el
-  // mismo tick) para que el navegador sí anime la transición de entrada
-  // desde translateX(-100%) en vez de aparecer ya abierto de golpe.
-  setTimeout(() => {
-    overlay.classList.add('open');
-    drawer.classList.add('open');
-  }, 10);
-
-  function close() {
-    overlay.classList.remove('open');
-    drawer.classList.remove('open');
-    setTimeout(() => {
-      overlay.remove();
-      drawer.remove();
-    }, 220);
-  }
-  overlay.addEventListener('click', close);
 }
 
 function logout() {
