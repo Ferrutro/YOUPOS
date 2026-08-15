@@ -24,7 +24,7 @@ let railMode = 'all'; // 'all' | 'favorites' | 'recent'
 let ticketNote = '';
 let lastSale = null;
 let heldSales = [];
-let toolbarLayout = { top: [], bottom: [], quick: [] };
+let toolbarLayout = { top: null, bottom: null, quick: null };
 let currentOrderType = null; // { type, label, detail } | null = "Mostrador" (venta normal)
 let currentAccountHeldId = null; // id en held_sales que respalda la cuenta en pantalla, o null si todavía no se ha guardado
 
@@ -306,10 +306,11 @@ function buildAllToolbarButtons() {
   ];
 }
 
-// Ids efectivos de una barra: los que el administrador personalizó, o si no
-// ha personalizado nada, los que trae esa barra por defecto.
+// Ids efectivos de una barra: los que el administrador personalizó (puede
+// ser un arreglo vacío a propósito), o si nunca la tocó (null), los que
+// trae esa barra por defecto.
 function effectiveIds(section) {
-  return toolbarLayout[section] && toolbarLayout[section].length > 0 ? toolbarLayout[section] : defaultIdsForSection(section);
+  return toolbarLayout[section] == null ? defaultIdsForSection(section) : toolbarLayout[section];
 }
 
 function buildFunctionToolbar() {

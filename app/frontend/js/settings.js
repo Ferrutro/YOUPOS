@@ -48,7 +48,7 @@ let paymentMethodsWorking = [];
 let logoDataValue = '';
 // Copia de trabajo del acomodo de botones — se guarda explícitamente con
 // "Guardar personalización" (arrastrar/tocar solo actualiza la vista previa).
-let toolbarLayout = { top: [], bottom: [], quick: [] };
+let toolbarLayout = { top: null, bottom: null, quick: null };
 
 const catalogById = new Map(POS_BUTTON_CATALOG.map((b) => [b.id, b]));
 
@@ -305,10 +305,12 @@ function renderTicketTab() {
 // ---------------------------------------------------------------------
 // Personalizar pantalla: editor de botones de la pantalla de venta
 // ---------------------------------------------------------------------
+// `toolbarLayout[section]` es `null` si esa barra nunca se personalizó
+// (se usan los botones por defecto), o un arreglo si ya se editó — puede
+// ser un arreglo vacío si el administrador la dejó sin botones a
+// propósito, y eso NO debe hacer que vuelvan a aparecer los de por defecto.
 function activeIdsFor(section) {
-  return toolbarLayout[section] && toolbarLayout[section].length > 0
-    ? toolbarLayout[section]
-    : defaultIdsForSection(section);
+  return toolbarLayout[section] == null ? defaultIdsForSection(section) : toolbarLayout[section];
 }
 
 // Cualquier botón del catálogo puede agregarse a la barra superior o a la
@@ -426,7 +428,7 @@ function renderToolbarTab() {
     }
     const resetBtn = e.target.closest('[data-reset]');
     if (resetBtn) {
-      toolbarLayout[resetBtn.dataset.reset] = [];
+      toolbarLayout[resetBtn.dataset.reset] = null; // null = "sin personalizar" = usa los de por defecto
       renderToolbarEditor();
       return;
     }

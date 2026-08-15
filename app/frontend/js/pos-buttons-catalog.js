@@ -59,27 +59,36 @@ export function defaultIdsForSection(section) {
 
 // Aplica una lista guardada de ids activos (en el orden elegido por el
 // usuario) sobre el arreglo real de botones ya construido (con sus
-// onClick/disabled ya resueltos). Un arreglo vacío significa "sin
-// personalizar todavía": se muestran todos, en el orden por defecto.
+// onClick/disabled ya resueltos). `null`/`undefined` significa "sin
+// personalizar todavía": se muestran todos, en el orden por defecto. Un
+// arreglo vacío `[]` es distinto — significa que el administrador quitó
+// TODOS los botones a propósito, así que esa barra se queda sin nada.
 export function applyToolbarLayout(buttons, activeIds) {
-  if (!activeIds || activeIds.length === 0) return buttons;
+  if (activeIds == null) return buttons;
   const byId = new Map(buttons.map((b) => [b.id, b]));
   return activeIds.map((id) => byId.get(id)).filter(Boolean);
 }
 
 // Lee `settings.pos_toolbar_layout` (formato nuevo) o, si no existe, migra
 // desde el esquema anterior `settings.pos_hidden_buttons` (una lista de ids
-// ocultos) para no perder personalizaciones ya guardadas.
+// ocultos) para no perder personalizaciones ya guardadas. Cada barra vale
+// `null` si nunca se personalizó (usa los botones por defecto) o un arreglo
+// (posiblemente vacío) si el administrador ya la editó — un arreglo vacío
+// NO es lo mismo que "nunca se tocó": es "se dejó sin botones a propósito".
 export function resolveToolbarLayout(settings) {
   if (settings && settings.pos_toolbar_layout) {
     try {
       const parsed = JSON.parse(settings.pos_toolbar_layout);
-      return { top: parsed.top || [], bottom: parsed.bottom || [], quick: parsed.quick || [] };
+      return {
+        top: Array.isArray(parsed.top) ? parsed.top : null,
+        bottom: Array.isArray(parsed.bottom) ? parsed.bottom : null,
+        quick: Array.isArray(parsed.quick) ? parsed.quick : null,
+      };
     } catch {
       // cae a la migración de abajo si el JSON guardado está corrupto
     }
   }
-  const layout = { top: [], bottom: [], quick: [] };
+  const layout = { top: null, bottom: null, quick: null };
   if (settings && settings.pos_hidden_buttons) {
     try {
       const hidden = new Set(JSON.parse(settings.pos_hidden_buttons));
@@ -89,7 +98,7 @@ export function resolveToolbarLayout(settings) {
         if (filtered.length !== defaults.length) layout[key] = filtered;
       }
     } catch {
-      // ignorar si también está corrupto: se queda con las listas vacías (= por defecto)
+      // ignorar si también está corrupto: se queda en null (= por defecto)
     }
   }
   return layout;
