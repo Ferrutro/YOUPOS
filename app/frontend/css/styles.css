@@ -71,11 +71,13 @@ button:hover { background: var(--gridline); }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
 
 button.primary {
-  background: var(--series-1);
+  /* Mismo verde en degradado que el logo (YOUPOS): claro arriba a la
+     izquierda, oscuro abajo a la derecha. */
+  background: linear-gradient(135deg, #4caf50, #1b5e20);
   color: #fff;
-  border-color: var(--series-1);
+  border-color: #1b5e20;
 }
-button.primary:hover { background: #2266b8; }
+button.primary:hover { background: linear-gradient(135deg, #43a047, #164a1c); }
 
 button.danger {
   background: var(--critical);
@@ -114,85 +116,21 @@ label {
 
 .field { margin-bottom: 14px; }
 
-/* --- Layout de la app --- */
+/* --- Layout de la app ---
+   Cada pantalla (Ventas, Inventario, Caja, Configuración...) es dueña de
+   toda la página — sin barra lateral fija; navegar entre pantallas se hace
+   desde el menú del punto de venta. Solo queda el botón fijo de "Cerrar
+   sesión" (ver layout.js), por eso el padding de arriba es más alto: deja
+   lugar para que no se encime con lo primero que haya en la pantalla. */
 
 .app-shell {
-  display: flex;
   min-height: 100vh;
 }
 
-.sidebar {
-  width: 220px;
-  flex-shrink: 0;
-  background: var(--surface-2);
-  border-right: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  padding: 16px 0;
-  position: sticky;
-  top: 0;
-  height: 100vh;
-}
-
-.sidebar .brand {
-  padding: 0 20px 16px 20px;
-  font-weight: 700;
-  font-size: 17px;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: 12px;
-}
-
-.sidebar nav {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  flex: 1;
-}
-
-.sidebar nav a {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  color: var(--text-secondary);
-  text-decoration: none;
-  padding: 10px 20px;
-  font-weight: 500;
-  border-left: 3px solid transparent;
-}
-.sidebar nav a:hover { background: var(--page-plane); color: var(--text-primary); }
-.sidebar nav a.active {
-  color: var(--series-1);
-  border-left-color: var(--series-1);
-  background: var(--page-plane);
-  font-weight: 600;
-}
-
-/* Insignia de alerta (ej. stock bajo) junto a un enlace del menú lateral */
-.nav-badge {
-  background: var(--warning);
-  color: #4a3400;
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1;
-  padding: 3px 6px;
-  border-radius: 999px;
-  min-width: 10px;
-  text-align: center;
-}
-
-.sidebar .user-box {
-  padding: 12px 20px;
-  border-top: 1px solid var(--border);
-  font-size: 13px;
-  color: var(--text-secondary);
-}
-.sidebar .user-box strong { color: var(--text-primary); display: block; }
-
 .main-content {
-  flex: 1;
-  padding: 24px 28px;
+  padding: 56px 28px 24px;
   max-width: 1400px;
+  margin: 0 auto;
 }
 
 .page-header {

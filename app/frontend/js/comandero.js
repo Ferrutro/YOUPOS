@@ -55,7 +55,7 @@ async function init() {
 function renderShell() {
   shell.innerHTML = `
     <div class="cmd-topbar">
-      <div class="brand">🧾 Comandero</div>
+      <div class="brand" style="display:flex; align-items:center; gap:6px;"><img src="/img/YOUPOS.png" alt="" style="height:20px; width:auto;" /> Comandero</div>
       <div class="spacer"></div>
       <button class="icon-btn" id="cmd-accounts-btn" title="Cuentas abiertas">${icon('layers', 18)}</button>
       <button class="icon-btn" id="cmd-switch-user-btn" title="Cambiar usuario">${icon('user', 18)}</button>

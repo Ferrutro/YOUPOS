@@ -93,7 +93,7 @@ shell.innerHTML = `
     <div class="spacer"></div>
     <div class="meta">${user.name}</div>
     <div class="meta clock" id="clock">--:--</div>
-    <button class="icon-btn" id="settings-menu-btn" title="Configuración">${icon('settings', 18)}</button>
+    <button class="icon-btn" id="settings-menu-btn" title="Menú">${icon('menu', 18)}</button>
   </div>
 
   <div class="pos-toolbar" id="function-toolbar"></div>
@@ -174,7 +174,7 @@ const functionToolbar = document.getElementById('function-toolbar');
 const bottomToolbar = document.getElementById('bottom-toolbar');
 const ticketQuickActions = document.getElementById('ticket-quickactions');
 
-document.getElementById('settings-menu-btn').addEventListener('click', (e) => openOperationsMenu(e.currentTarget));
+document.getElementById('settings-menu-btn').addEventListener('click', () => openOperationsMenu());
 
 // ---------- Panel del ticket redimensionable (arrastrar con mouse o dedo,
 // como el control de una línea de tiempo de video) ----------
@@ -302,7 +302,6 @@ function buildAllToolbarButtons() {
     toolButton({ id: 'invoices', key: 'Alt+F', ico: 'receipt', label: 'Facturas', onClick: stub('Facturación') }),
     toolButton({ id: 'credits', key: 'Alt+C', ico: 'creditCard', label: 'Créditos', onClick: stub('Ventas a crédito') }),
     toolButton({ id: 'reports', key: 'Alt+R', ico: 'barChart', label: 'Reportes', onClick: () => (window.location.href = '/reports.html'), disabled: !canSeeReports }),
-    toolButton({ id: 'cashclose', key: 'Alt+X', ico: 'scissors', label: 'Corte de caja', onClick: () => (window.location.href = '/cash.html') }),
   ];
 }
 
@@ -320,44 +319,54 @@ function buildBottomToolbar() {
   renderToolbar(bottomToolbar, applyToolbarLayout(buildAllToolbarButtons(), effectiveIds('bottom')));
 }
 
-function openOperationsMenu(anchor) {
-  document.querySelectorAll('.ops-menu').forEach((m) => m.remove());
+const ROLE_LABELS = { admin: 'Administrador', manager: 'Gerente', cashier: 'Cajero' };
+
+// Menú de navegación como panel deslizante desde la derecha (no un
+// recuadro flotante) — con el nombre del negocio y el usuario en sesión
+// arriba, igual que el menú "hamburguesa" de cualquier POS.
+function openOperationsMenu() {
+  document.querySelectorAll('.pos-drawer-overlay, .pos-side-drawer').forEach((m) => m.remove());
   const items = [
-    { label: 'Inventario', href: '/inventory.html', show: canManageCatalog },
-    { label: 'Ventas / Tickets', href: '/sales.html', show: true },
-    { label: 'Reportes', href: '/reports.html', show: canSeeReports },
-    { label: 'Caja', href: '/cash.html', show: true },
-    { label: 'Usuarios', href: '/users.html', show: user.role === 'admin' },
-    { label: 'Configuración', href: '/settings.html', show: user.role === 'admin' },
+    { label: 'Ventas / Tickets', ico: 'ticket', href: '/sales.html', show: true },
+    { label: 'Inventario', ico: 'box', href: '/inventory.html', show: canManageCatalog },
+    { label: 'Corte de caja', ico: 'scissors', href: '/cash.html', show: true },
+    { label: 'Configuración', ico: 'settings', href: '/settings.html', show: user.role === 'admin' },
   ].filter((i) => i.show);
 
-  const menu = document.createElement('div');
-  menu.className = 'ops-menu';
-  menu.style.cssText = `
-    position: fixed; z-index: 1200; background: #fff; border: 1px solid #d8d8d6;
-    border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.12); padding: 4px; min-width: 180px;
-  `;
-  const rect = anchor.getBoundingClientRect();
-  menu.style.top = `${rect.bottom + 4}px`;
-  // Se ancla al borde DERECHO del ícono (se extiende hacia la izquierda) en
-  // vez de al izquierdo, porque el ícono vive fijo en la esquina superior
-  // derecha — anclarlo por la izquierda sacaba el menú de la pantalla.
-  menu.style.right = `${window.innerWidth - rect.right}px`;
-  menu.innerHTML = items
-    .map((i) => `<a href="${i.href}" style="display:block;padding:8px 10px;font-size:13px;color:#161615;text-decoration:none;border-radius:5px;">${i.label}</a>`)
-    .join('<hr style="border:none;border-top:1px solid #eee;margin:2px 0">');
-  menu.querySelectorAll('a').forEach((a) => a.addEventListener('mouseenter', () => (a.style.background = '#f4f4f2')));
-  menu.querySelectorAll('a').forEach((a) => a.addEventListener('mouseleave', () => (a.style.background = 'transparent')));
-  shell.appendChild(menu);
+  const overlay = document.createElement('div');
+  overlay.className = 'pos-drawer-overlay';
 
+  const drawer = document.createElement('div');
+  drawer.className = 'pos-side-drawer';
+  drawer.innerHTML = `
+    <div class="pos-drawer-header">
+      <div class="biz-name">${settings.business_name || 'Mi Negocio'}</div>
+      <div class="user-name">${user.name} · ${ROLE_LABELS[user.role] || user.role}</div>
+    </div>
+    <nav class="pos-drawer-list">
+      ${items.map((i) => `<a href="${i.href}">${icon(i.ico, 18)}<span>${i.label}</span></a>`).join('')}
+    </nav>
+  `;
+
+  shell.appendChild(overlay);
+  shell.appendChild(drawer);
+  // Se agregan las clases "open" un ratito después de insertarlas (no en el
+  // mismo tick) para que el navegador sí anime la transición de entrada
+  // desde translateX(-100%) en vez de aparecer ya abierto de golpe.
   setTimeout(() => {
-    document.addEventListener('click', function closeMenu(e) {
-      if (!menu.contains(e.target) && e.target !== anchor) {
-        menu.remove();
-        document.removeEventListener('click', closeMenu);
-      }
-    });
-  }, 0);
+    overlay.classList.add('open');
+    drawer.classList.add('open');
+  }, 10);
+
+  function close() {
+    overlay.classList.remove('open');
+    drawer.classList.remove('open');
+    setTimeout(() => {
+      overlay.remove();
+      drawer.remove();
+    }, 220);
+  }
+  overlay.addEventListener('click', close);
 }
 
 function logout() {
@@ -377,6 +386,15 @@ async function loadAll() {
       api.get('/api/cash-sessions/current'),
       api.get('/api/held-sales'),
     ]);
+    // Nadie usa el POS sin un turno de caja abierto (se abre justo después
+    // de iniciar sesión) — si por alguna razón llega aquí sin uno (URL
+    // directa, volvió después de cerrar su turno, etc.), lo mandamos a
+    // abrirlo antes de seguir.
+    if (!sessionRes.session) {
+      window.location.href = '/open-shift.html';
+      return;
+    }
+
     products = productsRes.products;
     categories = categoriesRes.categories;
     customers = customersRes.customers;

@@ -42,6 +42,20 @@ export function requireRole(...roles) {
   return true;
 }
 
+// A dónde mandar al usuario justo después de iniciar sesión (o al volver a
+// index.html/pos.html ya logueado): si todavía no tiene un turno de caja
+// abierto, primero pasa por "Abrir turno" — recién ahí puede usar el POS.
+export async function goToPostLoginScreen() {
+  try {
+    const { session } = await apiFetch('/api/cash-sessions/current');
+    window.location.href = session ? '/pos.html' : '/open-shift.html';
+  } catch {
+    // Si la revisión falla (ej. red caída un instante), no dejamos a nadie
+    // varado en la pantalla de login — lo mandamos al POS de todos modos.
+    window.location.href = '/pos.html';
+  }
+}
+
 class ApiError extends Error {
   constructor(status, message) {
     super(message);

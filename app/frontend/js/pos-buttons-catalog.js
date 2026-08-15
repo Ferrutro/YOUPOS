@@ -28,7 +28,6 @@ export const POS_BUTTON_CATALOG = [
   { id: 'invoices', label: 'Facturas', ico: 'receipt', sections: ['bottom'] },
   { id: 'credits', label: 'Créditos', ico: 'creditCard', sections: ['bottom'] },
   { id: 'reports', label: 'Reportes', ico: 'barChart', sections: ['bottom'] },
-  { id: 'cashclose', label: 'Corte de caja', ico: 'scissors', sections: ['bottom'] },
 
   // Acciones rápidas del ticket
   { id: 'newproduct', label: 'Nuevo producto', ico: 'box', sections: ['quick'] },
@@ -48,7 +47,7 @@ export const POS_TOOLBAR_SECTIONS = [
 // qué otras barras también esté disponible ese mismo botón.
 const DEFAULT_IDS = {
   top: ['opentab', 'menu', 'pricelist', 'stock', 'shifts', 'switchuser'],
-  bottom: ['printticket', 'reprint', 'drawer', 'notes', 'calculator', 'scale', 'keyboard', 'numpad', 'shifts', 'accounts', 'tickets', 'invoices', 'credits', 'reports', 'cashclose'],
+  bottom: ['printticket', 'reprint', 'drawer', 'notes', 'calculator', 'scale', 'keyboard', 'numpad', 'shifts', 'accounts', 'tickets', 'invoices', 'credits', 'reports'],
   quick: ['newproduct', 'saveaccount', 'sendkitchen'],
 };
 
