@@ -1,0 +1,665 @@
+/* Interfaz de punto de venta — tema verde fijo, a juego con el logo del
+   cubo/foco de Mi POS. El color de categorías y productos se sigue
+   personalizando aparte (por producto/categoría, en Inventario); estos
+   colores generales (--pos-accent, la barra del ticket, Cobrar, Cancelar)
+   ya no se editan desde Configuración. El texto sigue siempre en --pos-ink
+   (fijo, oscuro) para que se lea bien sobre los fondos claros. */
+
+.pos-shell {
+  --pos-line: #d8ddd8;
+  --pos-line-strong: #b7c2b7;
+  --pos-ink: #161615;
+  --pos-ink-muted: #666b63;
+  --pos-surface: #ffffff;
+  --pos-surface-2: #eff7ef;
+  --pos-surface-3: #e3efe3;
+  --pos-accent: #2e7d32;
+  --pos-radius: 10px;
+  --pos-header-color: var(--pos-accent);
+  --pos-cancel-color: #c0392b;
+  --pos-pay-color: #388e3c;
+
+  /* Neutraliza la paleta de color compartida (toasts, modales, botones)
+     SOLO dentro de esta pantalla, para mantenerla monocromática por ahora. */
+  --series-1: #2b2b2a;
+  --good: #2b2b2a;
+  --warning: #2b2b2a;
+  --serious: #2b2b2a;
+  --critical: #2b2b2a;
+  --success-text: #2b2b2a;
+  --border-strong: var(--pos-line-strong);
+  --border: var(--pos-line);
+  --gridline: var(--pos-line);
+  --text-primary: var(--pos-ink);
+  --text-secondary: var(--pos-ink-muted);
+  --text-muted: #8c8c89;
+  --page-plane: var(--pos-surface-2);
+
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--pos-surface-2);
+  color: var(--pos-ink);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+/* Excepción a la paleta neutralizada de arriba: la alerta de stock bajo
+   necesita llamar la atención de verdad, así que no se apaga a gris junto
+   con el resto de los toasts de esta pantalla. */
+.pos-shell .toast.warning { background: #d03b3b; color: #fff; }
+
+.pos-shell button.primary,
+.pos-shell button.danger {
+  background: var(--pos-accent);
+  color: #fff;
+  border-color: var(--pos-accent);
+  border-radius: var(--pos-radius);
+}
+.pos-shell button.primary:hover,
+.pos-shell button.danger:hover {
+  filter: brightness(0.85);
+}
+.pos-shell button.ghost:hover { background: var(--pos-surface-3); }
+
+/* ---------- Barra superior: identidad + datos del ticket ---------- */
+.pos-topbar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  padding: 8px 16px;
+  background: var(--pos-surface);
+  border-bottom: 1px solid var(--pos-line);
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+/* Marca de Mi POS, chica y discreta, centrada arriba — no interactúa, solo
+   identidad visual (el logo del negocio del cliente es aparte). */
+.pos-topbar-logo {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  opacity: 0.8;
+  pointer-events: none;
+}
+/* En pantallas angostas la info del ticket ya ocupa el centro de la barra
+   (ver .pos-topbar-info) — la marca discreta se quita para no encimarse. */
+@media (max-width: 900px) {
+  .pos-topbar-logo { display: none; }
+}
+.pos-topbar .brand {
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: -0.01em;
+  margin-right: 4px;
+  color: var(--pos-accent);
+}
+.pos-topbar .meta {
+  color: var(--pos-ink-muted);
+  white-space: nowrap;
+}
+.pos-topbar .meta strong { color: var(--pos-ink); font-weight: 600; }
+.pos-topbar .spacer { flex: 1; min-width: 8px; }
+.pos-topbar .clock { font-variant-numeric: tabular-nums; }
+
+/* Grupo de datos del ticket (folio, artículos, moneda, tipo de cuenta): si
+   no caben todos, este grupo se encoge y se desplaza en su propio scroll
+   horizontal, en vez de empujar fuera de pantalla el reloj/usuario/engranaje
+   de la derecha (que siempre deben quedar visibles). */
+.pos-topbar-info {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  overflow-x: auto;
+  min-width: 0;
+  scrollbar-width: none;
+}
+.pos-topbar-info::-webkit-scrollbar { display: none; }
+
+/* ---------- Barras de herramientas (superior de funciones e inferior) ---------- */
+.pos-toolbar {
+  display: flex;
+  gap: 2px;
+  padding: 4px 8px;
+  background: var(--pos-surface);
+  border-bottom: 1px solid var(--pos-line);
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+.pos-toolbar.bottom {
+  border-bottom: none;
+  border-top: 1px solid var(--pos-line);
+}
+
+.toolbtn {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  width: 88px;
+  min-width: 88px;
+  padding: 7px 4px 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--pos-radius);
+  color: var(--pos-ink);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.toolbtn:hover { background: var(--pos-surface-3); border-color: var(--pos-line); }
+.toolbtn:disabled { opacity: 0.35; cursor: not-allowed; }
+.toolbtn .key {
+  position: absolute;
+  top: 2px;
+  left: 4px;
+  font-size: 9px;
+  color: var(--pos-ink-muted);
+  font-weight: 600;
+}
+.toolbtn .ico { color: var(--pos-ink); }
+.toolbtn .lbl {
+  display: block;
+  width: 100%;
+  font-size: 10px;
+  text-align: center;
+  line-height: 1.2;
+  color: var(--pos-ink);
+  overflow-wrap: break-word;
+}
+
+/* ---------- Layout principal: ticket | catálogo | rail de categorías ---------- */
+.pos-main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: var(--pos-ticket-w, 420px) 10px 1fr 96px;
+  min-height: 0;
+}
+
+/* --- Panel del ticket --- */
+.ticket-panel {
+  display: flex;
+  flex-direction: column;
+  background: var(--pos-surface);
+  min-height: 0;
+}
+
+/* --- Divisor arrastrable entre el ticket y los productos: se agarra y
+   arrastra con el mouse (o el dedo) para hacer una panel más grande y el
+   otro más chico, como el control de una línea de tiempo de video. --- */
+.pos-resize-handle {
+  position: relative;
+  cursor: col-resize;
+  background: var(--pos-surface);
+  border-left: 1px solid var(--pos-line);
+  border-right: 1px solid var(--pos-line);
+  touch-action: none;
+  flex-shrink: 0;
+}
+.pos-resize-handle::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 3px;
+  height: 44px;
+  border-radius: 3px;
+  background: var(--pos-line-strong);
+}
+.pos-resize-handle:hover,
+.pos-resize-handle.dragging {
+  background: var(--pos-surface-3);
+}
+.pos-resize-handle:hover::before,
+.pos-resize-handle.dragging::before {
+  background: var(--pos-accent);
+}
+.pos-shell.resizing-cols {
+  cursor: col-resize;
+  user-select: none;
+}
+.pos-shell.resizing-cols .pos-main * {
+  user-select: none;
+}
+
+.cliente-row {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--pos-line);
+}
+.cliente-row > label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--pos-ink-muted);
+  margin-bottom: 4px;
+}
+.cliente-row .req { color: var(--pos-ink); }
+.cliente-select-row { display: flex; gap: 6px; }
+.cliente-select-row select { flex: 1; }
+.icon-btn {
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--pos-line-strong);
+  border-radius: 6px;
+  background: var(--pos-surface);
+  color: var(--pos-ink);
+}
+.icon-btn:hover { background: var(--pos-surface-3); }
+.icon-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.icon-btn:disabled:hover { background: var(--pos-surface); }
+
+.ticket-table-wrap {
+  flex: 1;
+  overflow-y: auto;
+  position: relative;
+  min-height: 120px;
+}
+.ticket-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.ticket-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--pos-header-color);
+  text-align: left;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #fff;
+  font-weight: 600;
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--pos-line);
+}
+.ticket-table th.num, .ticket-table td.num { text-align: right; }
+.ticket-table td {
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--pos-line);
+  vertical-align: middle;
+}
+.ticket-table tbody tr:hover { background: var(--pos-surface-2); }
+.ticket-table .qty-controls { display: flex; align-items: center; gap: 4px; }
+.ticket-table .qty-controls button {
+  width: 20px; height: 20px; padding: 0; font-size: 12px; line-height: 1;
+  border: 1px solid var(--pos-line-strong); border-radius: 4px; background: var(--pos-surface);
+}
+.ticket-table .row-remove { color: var(--pos-ink-muted); background: none; border: none; cursor: pointer; }
+.ticket-table .row-remove:hover { color: var(--pos-ink); }
+.ticket-table .line-name { cursor: pointer; }
+.ticket-table .line-name:hover .pname { text-decoration: underline; }
+.ticket-table .line-extra {
+  display: block;
+  font-size: 10.5px;
+  color: var(--pos-ink-muted);
+  font-weight: 400;
+  white-space: normal;
+  margin-top: 2px;
+}
+
+.chip-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.chip-btn {
+  border: 1px solid var(--pos-line-strong);
+  background: var(--pos-surface);
+  color: var(--pos-ink);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.chip-btn:hover { background: var(--pos-surface-2); }
+.chip-btn.selected { background: var(--pos-accent); border-color: var(--pos-accent); color: #fff; }
+.link-btn { background: none; border: none; color: var(--pos-accent); font-size: 12.5px; font-weight: 600; cursor: pointer; padding: 0; }
+.link-btn:hover { text-decoration: underline; }
+
+.ticket-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+.ticket-empty .wordmark {
+  font-size: 44px;
+  font-weight: 800;
+  font-style: italic;
+  color: var(--pos-surface-3);
+  letter-spacing: -0.02em;
+}
+
+.ticket-quickactions {
+  display: flex;
+  gap: 4px;
+  padding: 6px 10px;
+  border-top: 1px solid var(--pos-line);
+  border-bottom: 1px solid var(--pos-line);
+  flex-shrink: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  max-width: 100%;
+}
+.ticket-quickactions .toolbtn { width: 62px; min-width: 62px; padding-left: 2px; padding-right: 2px; }
+.ticket-quickactions { gap: 3px; }
+
+.estado-row {
+  padding: 6px 14px;
+  font-size: 12px;
+  color: var(--pos-ink-muted);
+  flex-shrink: 0;
+}
+.estado-row strong { color: var(--pos-ink); font-weight: 600; }
+
+.totals-row {
+  padding: 8px 14px 4px;
+  flex-shrink: 0;
+}
+.totals-row .trow {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  padding: 2px 0;
+  color: var(--pos-ink-muted);
+}
+.totals-row .trow.total {
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--pos-ink);
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px solid var(--pos-line);
+}
+
+.big-actions-row {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 8px;
+  padding: 10px 14px 14px;
+  flex-shrink: 0;
+}
+.big-btn {
+  padding: 16px 10px;
+  font-size: 15px;
+  font-weight: 700;
+  border-radius: var(--pos-radius);
+  border: 1px solid var(--pos-ink);
+  background: var(--pos-surface);
+  color: var(--pos-ink);
+}
+.big-btn.pay { background: var(--pos-pay-color); border-color: var(--pos-pay-color); color: #fff; }
+.big-btn.cancel { background: var(--pos-cancel-color); border-color: var(--pos-cancel-color); color: #fff; }
+.big-btn:hover { opacity: 0.85; }
+.big-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* --- Panel de catálogo (búsqueda + grilla de productos) --- */
+.catalog-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+.search-row {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--pos-line);
+  background: var(--pos-surface);
+  flex-shrink: 0;
+}
+.search-row input {
+  border: 1px solid var(--pos-line-strong);
+  border-radius: var(--pos-radius);
+  text-transform: uppercase;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+}
+.search-row input::placeholder { color: var(--pos-ink-muted); text-transform: uppercase; }
+
+.product-grid-wrap {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px;
+}
+.pos-product-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+}
+.pos-product-tile {
+  position: relative;
+  background: var(--pos-surface);
+  border: 1px solid var(--pos-line);
+  border-radius: var(--pos-radius);
+  padding: 10px;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pos-product-tile:hover { border-color: var(--pos-accent); }
+.pos-product-tile:disabled { opacity: 0.4; cursor: not-allowed; }
+.pos-product-tile .thumb {
+  height: 64px;
+  border-radius: calc(var(--pos-radius) * 0.75);
+  background: var(--pos-surface-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--pos-ink-muted);
+  overflow: hidden;
+}
+.pos-product-tile .pname {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.25;
+  min-height: 30px;
+}
+.pos-product-tile .pprice { font-size: 12.5px; color: var(--pos-ink-muted); }
+.pos-product-tile .corner {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--pos-ink-muted);
+  background: var(--pos-surface);
+  border: 1px solid var(--pos-line);
+  border-radius: 5px;
+}
+.pos-product-tile .corner.tl { top: 6px; left: 6px; }
+.pos-product-tile .corner.tr { top: 6px; right: 6px; }
+.pos-product-tile .corner.br { bottom: 6px; right: 6px; }
+
+/* --- Rail de categorías (derecha) --- */
+.category-rail {
+  border-left: 1px solid var(--pos-line);
+  background: var(--pos-surface);
+  overflow-y: auto;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.category-rail .railbtn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 10px 4px;
+  border: 1px solid var(--pos-line);
+  border-radius: 8px;
+  background: var(--pos-surface);
+  color: var(--pos-ink);
+  font-size: 10px;
+  text-align: center;
+  line-height: 1.15;
+}
+.category-rail .railbtn.active { border-color: var(--pos-accent); background: var(--pos-surface-3); font-weight: 600; color: var(--pos-accent); }
+.category-rail .railbtn:hover { background: var(--pos-surface-3); }
+.category-rail hr { width: 100%; border: none; border-top: 1px solid var(--pos-line); margin: 2px 0; }
+
+/* ---------- Línea de estado / atajos, al fondo ---------- */
+.pos-statusline {
+  padding: 5px 14px;
+  font-size: 11px;
+  color: var(--pos-ink-muted);
+  background: var(--pos-surface-2);
+  border-top: 1px solid var(--pos-line);
+  flex-shrink: 0;
+  white-space: nowrap;
+  overflow-x: auto;
+}
+.pos-statusline b { color: var(--pos-ink); font-weight: 600; }
+.pos-statusline .sep { margin: 0 10px; color: var(--pos-line-strong); }
+
+/* ---------- Modal de cobro ---------- */
+.checkout-modal { max-width: 460px; }
+.checkout-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.checkout-header h3 { margin: 0; }
+.checkout-split-btn {
+  border: 1px solid var(--pos-line-strong);
+  background: var(--pos-surface);
+  color: var(--pos-accent);
+  border-radius: var(--pos-radius);
+  padding: 7px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.checkout-split-btn:hover { background: var(--pos-surface-2); }
+.checkout-split-btn.active { background: var(--pos-accent); border-color: var(--pos-accent); color: #fff; }
+
+.checkout-total {
+  text-align: center;
+  background: var(--pos-surface-2);
+  border-radius: var(--pos-radius);
+  padding: 14px 10px;
+  margin: 14px 0;
+}
+.checkout-total-label { font-size: 12.5px; color: var(--pos-ink-muted); font-weight: 600; }
+.checkout-total-amount { font-size: 34px; font-weight: 800; color: var(--pos-ink); line-height: 1.2; }
+
+/* Segundo "total" para cuando el método elegido tiene % de recargo (ej.
+   tarjeta de crédito): se ve tan grande y clara como el total real, para
+   que sea el número que el cajero de verdad marca en la terminal — no una
+   nota pequeña que se pueda pasar por alto. */
+.checkout-total.surcharge-total {
+  background: var(--pos-surface);
+  border: 2px solid var(--pos-accent);
+  margin-top: 8px;
+}
+.checkout-total.surcharge-total .checkout-total-label { color: var(--pos-accent); }
+.checkout-total.surcharge-total .checkout-total-amount { color: var(--pos-accent); font-size: 30px; }
+
+.checkout-methods {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.method-btn {
+  border: 1px solid var(--pos-line-strong);
+  background: var(--pos-surface);
+  color: var(--pos-ink);
+  border-radius: var(--pos-radius);
+  padding: 12px 8px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.method-btn:hover { background: var(--pos-surface-2); }
+.method-btn.selected { background: var(--pos-pay-color); border-color: var(--pos-pay-color); color: #fff; }
+
+.checkout-quick-amounts {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin: 10px 0;
+}
+.quick-amount-btn {
+  border: 1px solid var(--pos-line-strong);
+  background: var(--pos-surface);
+  color: var(--pos-ink);
+  border-radius: var(--pos-radius);
+  padding: 9px 4px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.quick-amount-btn:hover { background: var(--pos-surface-2); }
+.quick-amount-btn.selected { background: var(--pos-accent); border-color: var(--pos-accent); color: #fff; }
+
+.checkout-change {
+  text-align: center;
+  font-size: 15px;
+  font-weight: 700;
+  margin-top: 8px;
+  padding: 8px;
+  border-radius: var(--pos-radius);
+  background: var(--pos-surface-2);
+}
+.checkout-change.ok { color: var(--pos-pay-color); }
+.checkout-change.short { color: var(--pos-cancel-color); }
+
+.split-row {
+  display: grid;
+  grid-template-columns: 1fr 100px 30px;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.split-row select {
+  border: 1px solid var(--pos-line-strong);
+  border-radius: var(--pos-radius);
+  padding: 8px;
+  font-size: 13px;
+  background: var(--pos-surface);
+  color: var(--pos-ink);
+}
+.split-row input[type="number"], .split-row input[type="text"] {
+  border: 1px solid var(--pos-line-strong);
+  border-radius: var(--pos-radius);
+  padding: 8px;
+  font-size: 13px;
+  width: 100%;
+}
+.split-row .split-remove {
+  border: none;
+  background: none;
+  color: var(--pos-cancel-color);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  padding: 4px;
+}
+.split-row-label { grid-column: 1 / -1; margin-top: -4px; margin-bottom: 4px; }
+.split-add-btn {
+  width: 100%;
+  border: 1px dashed var(--pos-line-strong);
+  background: var(--pos-surface);
+  color: var(--pos-accent);
+  border-radius: var(--pos-radius);
+  padding: 9px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-bottom: 10px;
+}
+.split-add-btn:hover { background: var(--pos-surface-2); }
+
+@media print {
+  .pos-shell > *:not(#print-area) { display: none !important; }
+}

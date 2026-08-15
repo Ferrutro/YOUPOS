@@ -1,0 +1,15 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "pos-backend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "app/backend", "run", "start"],
+      "port": 3000
+    },
+    {
+      "name": "pos-backend-attach",
+      "url": "http://localhost:3000"
+    }
+  ]
+}
