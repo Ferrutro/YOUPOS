@@ -145,7 +145,14 @@ CREATE TABLE IF NOT EXISTS held_sales (
   -- varias cuentas), guardado como JSON: {type, label, detail}. Null =
   -- cuenta sin tipo (venta de mostrador que se dejó en espera).
   order_type_json TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  -- Estado en la pantalla de cocina: NULL = todavía no se envió a cocina
+  -- (es solo una cuenta guardada, ej. con "Guardar"), o 'pending' /
+  -- 'preparing' / 'ready' una vez que sí se mandó con "Enviar a cocina".
+  kitchen_status TEXT CHECK (kitchen_status IN ('pending', 'preparing', 'ready')),
+  -- Cuándo se mandó a cocina por primera vez (para ordenar la cola por
+  -- quién llegó primero y mostrar cuánto tiempo lleva esperando).
+  kitchen_sent_at TEXT
 );
 
 -- Retiros y depósitos de efectivo durante un turno de caja

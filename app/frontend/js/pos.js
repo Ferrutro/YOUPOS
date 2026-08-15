@@ -2084,10 +2084,23 @@ function printReceipt(sale) {
 // precios ni totales. El mesero la manda cuando quiere avisar a cocina de
 // un pedido nuevo o de un cambio (p. ej. "sin cebolla" que se agregó
 // después de tomar la orden).
-function printKitchenTicket() {
+async function printKitchenTicket() {
   if (cart.length === 0) {
     toast('No hay artículos que enviar a cocina.', 'error');
     return;
+  }
+
+  // Guarda la cuenta (si no tenía respaldo en held_sales todavía, la crea)
+  // y la marca como enviada a cocina — así aparece en la pantalla de
+  // cocina, además de imprimirse en papel abajo.
+  await persistCurrentAccount();
+  if (currentAccountHeldId) {
+    try {
+      await api.post(`/api/held-sales/${currentAccountHeldId}/send-to-kitchen`);
+      await refreshHeldSales();
+    } catch (err) {
+      toast(err.message, 'error');
+    }
   }
 
   // Si se usó "Persona" al personalizar algún artículo, la comanda sale

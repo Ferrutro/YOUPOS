@@ -669,6 +669,10 @@ async function sendToKitchen() {
       const res = await api.post('/api/held-sales', payload);
       currentAccountHeldId = res.id;
     }
+    // Además de guardar la cuenta, la marca como "enviada a cocina" — así
+    // aparece en la pantalla de cocina (antes de esto, "Guardar" y "Enviar"
+    // hacían exactamente lo mismo puertas adentro).
+    await api.post(`/api/held-sales/${currentAccountHeldId}/send-to-kitchen`);
     toast(`Pedido enviado: ${currentOrderType.label}.`, 'success');
     heldSales = (await api.get('/api/held-sales')).heldSales;
     cart = [];

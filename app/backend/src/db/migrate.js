@@ -106,6 +106,8 @@ export function migrate() {
   addColumnIfMissing('categories', 'color', 'TEXT');
   addColumnIfMissing('sale_items', 'notes', 'TEXT');
   addColumnIfMissing('held_sales', 'order_type_json', 'TEXT');
+  addColumnIfMissing('held_sales', 'kitchen_status', 'TEXT');
+  addColumnIfMissing('held_sales', 'kitchen_sent_at', 'TEXT');
   // Etiqueta libre, usada solo por ventas viejas con el método "Otro" de
   // antes (ej. "Vales de despensa"); se conserva por si ya la usaste.
   addColumnIfMissing('sale_payments', 'label', 'TEXT');
