@@ -152,7 +152,14 @@ CREATE TABLE IF NOT EXISTS held_sales (
   kitchen_status TEXT CHECK (kitchen_status IN ('pending', 'preparing', 'ready')),
   -- Cuándo se mandó a cocina por primera vez (para ordenar la cola por
   -- quién llegó primero y mostrar cuánto tiempo lleva esperando).
-  kitchen_sent_at TEXT
+  kitchen_sent_at TEXT,
+  -- "Foto" de items_json/order_type_json tal como estaban en el momento de
+  -- presionar "Enviar" — es lo que de verdad lee la pantalla de cocina, NO
+  -- items_json/order_type_json en vivo. Así, si después se le agrega algo
+  -- más a la cuenta y se presiona "Guardar" (no "Enviar"), cocina sigue
+  -- viendo lo mismo hasta que se vuelva a mandar a propósito.
+  kitchen_items_json TEXT,
+  kitchen_order_type_json TEXT
 );
 
 -- Retiros y depósitos de efectivo durante un turno de caja

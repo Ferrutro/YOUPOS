@@ -44,6 +44,22 @@
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
+/* Modo oscuro del punto de venta (y Comandero, que comparte esta hoja) —
+   ver theme.js. Misma idea: solo se redefinen los tokens de superficie. */
+:root[data-theme="dark"] .pos-shell {
+  --pos-line: #343e38;
+  --pos-line-strong: #4a564d;
+  --pos-ink: #eef1ee;
+  --pos-ink-muted: #9ba79f;
+  --pos-surface: #1a1f1c;
+  --pos-surface-2: #141915;
+  --pos-surface-3: #212b23;
+  --pos-accent: #4caf50;
+  --pos-cancel-color: #e5534b;
+  --pos-pay-color: #43a047;
+  --text-muted: #8b958f;
+}
+
 /* Excepción a la paleta neutralizada de arriba: la alerta de stock bajo
    necesita llamar la atención de verdad, así que no se apaga a gris junto
    con el resto de los toasts de esta pantalla. */
@@ -427,8 +443,9 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
 }
-.pos-product-tile:hover { border-color: var(--pos-accent); }
+.pos-product-tile:hover { border-color: var(--pos-accent); box-shadow: 0 4px 12px rgba(11, 11, 11, 0.08); transform: translateY(-2px); }
 .pos-product-tile:disabled { opacity: 0.4; cursor: not-allowed; }
 .pos-product-tile .thumb {
   height: 64px;

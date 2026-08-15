@@ -1,22 +1,22 @@
 // Pantalla de cocina (KDS) — pensada para quedarse prendida en una tablet en
-// la cocina. Se refresca sola (no hace falta tocar nada) y avisa con un
-// sonido cuando llega un pedido nuevo.
-import { api, requireAuth, getUser, clearSession } from './api.js';
+// la cocina. Un solo tablero de tickets (sin columnas de estado): cada
+// tarjeta tiene su propio color para que, además del nombre, se reconozca
+// de un vistazo. Tocar el encabezado cierra el ticket (ya se entregó).
+import { api, requireAuth, getUser, clearSession, toast } from './api.js';
 import { icon } from './icons.js';
+import { getTheme, applyTheme, toggleTheme } from './theme.js';
+
+const THEME_KEY = 'youpos_kitchen_theme';
+applyTheme(getTheme(THEME_KEY, 'dark'));
 
 if (!requireAuth()) throw new Error('no auth');
 const user = getUser();
 
 const POLL_MS = 6000;
-const LATE_AFTER_MIN = { pending: 8, preparing: 12, ready: 5 };
-const COLUMNS = [
-  { key: 'pending', label: 'Pendiente' },
-  { key: 'preparing', label: 'Preparando' },
-  { key: 'ready', label: 'Listo' },
-];
+const LATE_AFTER_MIN = 10;
 
 let orders = [];
-let knownPendingIds = new Set();
+let knownIds = new Set();
 let firstLoad = true;
 let audioCtx = null;
 
@@ -28,21 +28,11 @@ document.body.innerHTML = `
       <span class="kd-dot" id="kd-dot" title="Actualizando en vivo"></span>
       <div class="kd-spacer"></div>
       <div class="kd-clock" id="kd-clock">--:--</div>
+      <button class="kd-icon-btn" id="kd-settings-btn" title="Configuración">${icon('settings', 18)}</button>
       <button class="kd-icon-btn" id="kd-logout-btn" title="Salir">${icon('logout', 18)}</button>
     </div>
     <div class="kd-board" id="kd-board">
-      ${COLUMNS.map(
-        (c) => `
-        <div class="kd-column" data-col="${c.key}">
-          <div class="kd-column-head">
-            <span class="dot"></span>
-            <span class="title">${c.label}</span>
-            <span class="count" id="kd-count-${c.key}">0</span>
-          </div>
-          <div class="kd-column-body" id="kd-body-${c.key}"><div class="kd-loading">Cargando…</div></div>
-        </div>
-      `
-      ).join('')}
+      <div class="kd-loading">Cargando…</div>
     </div>
   </div>
 `;
@@ -58,6 +48,34 @@ function tickClock() {
 }
 tickClock();
 setInterval(tickClock, 15000);
+
+// ---------- Tuerca: configuración (modo oscuro/claro, y lo que se agregue después) ----------
+function openSettings() {
+  document.querySelectorAll('.kd-settings-overlay').forEach((m) => m.remove());
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay kd-settings-overlay';
+  const current = getTheme(THEME_KEY, 'dark');
+  overlay.innerHTML = `
+    <div class="modal kd-settings-modal">
+      <h3 style="margin-top:0;">Configuración de cocina</h3>
+      <button type="button" class="kd-settings-row" id="kd-theme-toggle">
+        <span>${icon(current === 'dark' ? 'sun' : 'moon', 20)}</span>
+        <span class="kd-settings-row-label">${current === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}</span>
+      </button>
+      <div class="modal-actions"><button class="ghost" id="kd-settings-close">Cerrar</button></div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+  overlay.querySelector('#kd-settings-close').addEventListener('click', () => overlay.remove());
+  overlay.querySelector('#kd-theme-toggle').addEventListener('click', () => {
+    const next = toggleTheme(THEME_KEY, 'dark');
+    overlay.remove();
+    openSettings();
+    toast(`Modo ${next === 'dark' ? 'oscuro' : 'claro'} activado.`, 'success');
+  });
+}
+document.getElementById('kd-settings-btn').addEventListener('click', openSettings);
 
 // ---------- Sonido de aviso (sintetizado, sin archivos externos) ----------
 function playChime() {
@@ -79,17 +97,31 @@ function playChime() {
   } catch { /* si el navegador bloquea audio sin interacción previa, no pasa nada grave */ }
 }
 
-// ---------- Tiempo transcurrido ----------
+// ---------- Tiempo ----------
+function parseDbDate(dateStr) {
+  return new Date(dateStr.replace(' ', 'T') + 'Z');
+}
 function minutesSince(dateStr) {
-  const then = new Date(dateStr.replace(' ', 'T') + 'Z').getTime();
-  const now = Date.now();
-  return Math.max(0, Math.floor((now - then) / 60000));
+  return Math.max(0, Math.floor((Date.now() - parseDbDate(dateStr).getTime()) / 60000));
 }
 function formatElapsed(mins) {
   if (mins < 60) return `${mins} min`;
   const h = Math.floor(mins / 60);
   const m = mins % 60;
   return `${h}h ${m}m`;
+}
+function formatClock(dateStr) {
+  return parseDbDate(dateStr).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+}
+
+// ---------- 30 colores de ticket ----------
+// Un tono por ticket (según su id, así que siempre es el mismo color para
+// el mismo ticket) — de fondo pastel con texto oscuro fijo, para que se lea
+// bien tanto en modo claro como oscuro.
+const TICKET_HUES = Array.from({ length: 30 }, (_, i) => Math.round(i * (360 / 30)));
+function ticketColor(id) {
+  const hue = TICKET_HUES[id % TICKET_HUES.length];
+  return `hsl(${hue}, 62%, 82%)`;
 }
 
 // ---------- Agrupar artículos por persona (igual que el POS/comanda impresa) ----------
@@ -137,72 +169,146 @@ function itemsHtml(order) {
 
 function cardHtml(order) {
   const mins = minutesSince(order.kitchen_sent_at || order.created_at);
-  const isLate = mins >= (LATE_AFTER_MIN[order.kitchen_status] || 99);
-  const label = order.order_type ? order.order_type.label : order.customer_name || 'Sin nombre';
-  const detail = order.order_type && order.order_type.detail ? order.order_type.detail : null;
-
-  const actionsByStatus = {
-    pending: `<button class="kd-btn kd-start" data-action="preparing">Empezar</button>`,
-    preparing: `<button class="kd-btn kd-ready" data-action="ready">Listo</button>`,
-    ready: `<button class="kd-btn kd-deliver" data-action="deliver">Entregado ✓</button>`,
-  };
+  const isLate = mins >= LATE_AFTER_MIN;
+  const label = order.order_type ? order.order_type.label : order.customer_name || 'Ticket vacío';
 
   return `
-    <div class="kd-card ${isLate ? 'kd-late' : ''}" data-col="${order.kitchen_status}" data-id="${order.id}">
-      <div class="kd-card-head">
-        <div>
-          <div class="kd-card-title">${label}</div>
-          <div class="kd-card-sub">${detail ? detail + ' · ' : ''}${order.user_name}</div>
-        </div>
+    <div class="kd-card ${isLate ? 'kd-late' : ''}" data-id="${order.id}">
+      <div class="kd-card-head" style="background:${ticketColor(order.id)};" data-action="dismiss" title="Tocar para cerrar el ticket">
+        <div class="kd-card-title">${label}</div>
+        <div class="kd-card-sub">${formatClock(order.created_at)}, ${order.user_name}</div>
         <div class="kd-timer ${isLate ? 'kd-late' : ''}">${formatElapsed(mins)}</div>
       </div>
-      <div class="kd-items">${itemsHtml(order)}</div>
-      ${order.note ? `<div class="kd-note">${order.note}</div>` : ''}
-      <div class="kd-card-actions">${actionsByStatus[order.kitchen_status] || ''}</div>
+      <div class="kd-card-body">
+        <div class="kd-items">${itemsHtml(order)}</div>
+        <div class="kd-note-zone" data-id="${order.id}">
+          ${order.note ? `<div class="kd-note">${order.note}</div>` : ''}
+          <button type="button" class="kd-note-add" data-action="note">${icon('note', 14)} ${order.note ? 'Editar comentario' : '+ Comentario'}</button>
+        </div>
+      </div>
     </div>
   `;
 }
 
 function render() {
-  for (const col of COLUMNS) {
-    const list = orders.filter((o) => o.kitchen_status === col.key);
-    document.getElementById(`kd-count-${col.key}`).textContent = list.length;
-    const body = document.getElementById(`kd-body-${col.key}`);
-    body.innerHTML = list.length ? list.map(cardHtml).join('') : `<div class="kd-empty">Sin pedidos</div>`;
+  const board = document.getElementById('kd-board');
+  if (orders.length === 0) {
+    board.innerHTML = `<div class="kd-empty-board">No hay tickets abiertos en cocina ahora mismo.</div>`;
+    return;
   }
+  board.innerHTML = orders.map(cardHtml).join('');
 }
 
-async function act(id, action) {
-  const statusByAction = { preparing: 'preparing', ready: 'ready', deliver: null };
+// Actualiza solo el "hace X min" de cada tarjeta ya pintada, sin reconstruir
+// el tablero — así no se reinicia la animación de entrada de las tarjetas
+// que no cambiaron (eso era lo que hacía parpadear todo a cada rato).
+function updateTimers() {
+  document.querySelectorAll('.kd-card[data-id]').forEach((card) => {
+    const order = orders.find((o) => o.id === Number(card.dataset.id));
+    if (!order) return;
+    const mins = minutesSince(order.kitchen_sent_at || order.created_at);
+    const isLate = mins >= LATE_AFTER_MIN;
+    card.classList.toggle('kd-late', isLate);
+    const timer = card.querySelector('.kd-timer');
+    if (timer) {
+      timer.textContent = formatElapsed(mins);
+      timer.classList.toggle('kd-late', isLate);
+    }
+  });
+}
+
+async function dismiss(id, card) {
+  const head = card.querySelector('.kd-card-head');
+  card.classList.add('kd-leaving');
   try {
-    await api.post(`/api/held-sales/${id}/kitchen-status`, { status: statusByAction[action] });
+    await Promise.all([
+      api.post(`/api/held-sales/${id}/kitchen-status`, { status: null }),
+      new Promise((resolve) => setTimeout(resolve, 180)),
+    ]);
     await load();
   } catch (err) {
-    alert(err.message);
+    card.classList.remove('kd-leaving');
+    toast(err.message, 'error');
+  }
+  void head;
+}
+
+function openNoteEditor(id, zone) {
+  const order = orders.find((o) => o.id === id);
+  zone.innerHTML = `
+    <textarea class="kd-note-input" rows="2" placeholder="Ej. sin hielo para toda la mesa...">${order?.note || ''}</textarea>
+    <div class="kd-note-actions">
+      <button type="button" class="ghost" data-action="note-cancel">Cancelar</button>
+      <button type="button" class="primary" data-action="note-save">Guardar</button>
+    </div>
+  `;
+  zone.querySelector('textarea').focus();
+}
+
+async function saveNote(id, zone) {
+  const textarea = zone.querySelector('textarea');
+  const note = textarea.value.trim();
+  try {
+    await api.post(`/api/held-sales/${id}/note`, { note });
+    const order = orders.find((o) => o.id === id);
+    if (order) order.note = note || null;
+    lastSignature = orders.map(orderSignature).join('|');
+    render();
+  } catch (err) {
+    toast(err.message, 'error');
   }
 }
 
 document.getElementById('kd-board').addEventListener('click', (e) => {
-  const btn = e.target.closest('[data-action]');
-  if (!btn) return;
-  const card = btn.closest('[data-id]');
-  act(Number(card.dataset.id), btn.dataset.action);
+  const noteZone = e.target.closest('.kd-note-zone');
+
+  if (e.target.closest('[data-action="dismiss"]')) {
+    const card = e.target.closest('[data-id]');
+    dismiss(Number(card.dataset.id), card);
+    return;
+  }
+  if (e.target.closest('[data-action="note"]')) {
+    openNoteEditor(Number(noteZone.dataset.id), noteZone);
+    return;
+  }
+  if (e.target.closest('[data-action="note-save"]')) {
+    saveNote(Number(noteZone.dataset.id), noteZone);
+    return;
+  }
+  if (e.target.closest('[data-action="note-cancel"]')) {
+    render();
+  }
 });
 
 // ---------- Carga y refresco automático ----------
+// Firma de lo que se ve en pantalla por ticket: mientras no cambie, no hay
+// razón para reconstruir el tablero en cada sondeo (cada 6s) — eso era lo
+// que causaba el parpadeo, porque las tarjetas se destruían y volvían a
+// crear (con su animación de entrada) aunque no hubiera nada nuevo.
+function orderSignature(o) {
+  return `${o.id}:${o.kitchen_sent_at}:${o.note || ''}:${JSON.stringify(o.items)}:${JSON.stringify(o.order_type)}`;
+}
+let lastSignature = '';
+
 async function load() {
   try {
     const { heldSales } = await api.get('/api/held-sales?kitchen=1');
     orders = heldSales;
 
     if (!firstLoad) {
-      const newlyPending = orders.filter((o) => o.kitchen_status === 'pending' && !knownPendingIds.has(o.id));
-      if (newlyPending.length > 0) playChime();
+      const newlyArrived = orders.filter((o) => !knownIds.has(o.id));
+      if (newlyArrived.length > 0) playChime();
     }
-    knownPendingIds = new Set(orders.filter((o) => o.kitchen_status === 'pending').map((o) => o.id));
+    knownIds = new Set(orders.map((o) => o.id));
     firstLoad = false;
 
-    render();
+    const signature = orders.map(orderSignature).join('|');
+    if (signature !== lastSignature) {
+      lastSignature = signature;
+      render();
+    } else {
+      updateTimers();
+    }
     document.getElementById('kd-dot').style.background = '';
   } catch (err) {
     document.getElementById('kd-dot').style.background = '#e5534b';
@@ -210,9 +316,9 @@ async function load() {
 }
 
 // Vuelve a pintar los relojitos de "hace X min" a cada rato sin tener que
-// re-pedir todo al servidor.
+// re-pedir todo al servidor ni reconstruir las tarjetas.
 setInterval(() => {
-  if (orders.length) render();
+  if (orders.length) updateTimers();
 }, 20000);
 
 load();

@@ -1,5 +1,8 @@
 import { api, requireAuth, getUser, clearSession, toast, formatMoney } from './api.js';
 import { icon } from './icons.js';
+import { getTheme, applyTheme } from './theme.js';
+
+applyTheme(getTheme('youpos_theme', 'light'));
 
 if (!requireAuth()) throw new Error('redirect');
 

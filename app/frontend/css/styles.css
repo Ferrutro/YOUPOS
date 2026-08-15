@@ -1,4 +1,21 @@
 /* Sistema de diseño base para el POS. Paleta de referencia (dataviz skill). */
+
+/* Transición nativa entre páginas (cada pantalla es un documento HTML
+   aparte, no una sola app de una página) — el navegador hace un
+   desvanecido cruzado solo con esto, sin JavaScript. Si el navegador no
+   lo soporta, simplemente navega instantáneo como antes (no rompe nada). */
+@view-transition {
+  navigation: auto;
+}
+::view-transition-old(root) {
+  animation: 140ms ease-out both youpos-fade-out;
+}
+::view-transition-new(root) {
+  animation: 180ms ease-in both youpos-fade-in;
+}
+@keyframes youpos-fade-out { to { opacity: 0; } }
+@keyframes youpos-fade-in { from { opacity: 0; } }
+
 :root {
   color-scheme: light;
   --surface-1: #fcfcfb;
@@ -34,6 +51,23 @@
   --shadow-md: 0 4px 16px rgba(11,11,11,0.08);
 }
 
+/* Modo oscuro — ver theme.js. Redefine solo los tokens de superficie/texto;
+   el resto (radios, colores de acento, sombras) se queda igual. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --surface-1: #1b1e1c;
+  --page-plane: #141715;
+  --surface-2: #232726;
+  --text-primary: #f2f4f2;
+  --text-secondary: #b7bdb9;
+  --text-muted: #8b928e;
+  --gridline: #333c37;
+  --border: rgba(255, 255, 255, 0.10);
+  --border-strong: #454f49;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.24), 0 1px 1px rgba(0,0,0,0.18);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.32);
+}
+
 * { box-sizing: border-box; }
 
 html, body {
@@ -66,9 +100,10 @@ button {
   background: var(--surface-2);
   color: var(--text-primary);
   border: 1px solid var(--border-strong);
-  transition: background 0.12s ease, border-color 0.12s ease;
+  transition: background 0.12s ease, border-color 0.12s ease, transform 0.08s ease, box-shadow 0.12s ease, opacity 0.12s ease;
 }
 button:hover { background: var(--gridline); }
+button:active:not(:disabled) { transform: scale(0.96); }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
 
 button.primary {
@@ -101,10 +136,12 @@ input, select, textarea {
   background: var(--surface-2);
   color: var(--text-primary);
   width: 100%;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 input:focus, select:focus, textarea:focus {
-  outline: 2px solid var(--series-1);
-  outline-offset: 1px;
+  outline: none;
+  border-color: var(--series-1);
+  box-shadow: 0 0 0 3px rgba(42, 120, 214, 0.15);
 }
 
 label {
@@ -204,11 +241,34 @@ label {
   text-decoration: none;
   font-size: 14.5px;
   font-weight: 500;
+  transition: background 0.12s ease, padding-left 0.12s ease;
 }
+.pos-drawer-list a:active { padding-left: 22px; }
 .pos-drawer-list a:hover { background: var(--page-plane); }
 .pos-drawer-list a svg { flex-shrink: 0; color: var(--text-secondary); }
 .pos-drawer-list a.logout { border-top: 1px solid var(--border); margin-top: 4px; color: var(--critical); }
 .pos-drawer-list a.logout svg { color: var(--critical); }
+
+.pos-drawer-theme-btn {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  width: 100%;
+  padding: 13px 18px;
+  color: var(--text-primary);
+  font-size: 14.5px;
+  font-weight: 500;
+  background: transparent;
+  border: none;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  margin-top: 4px;
+  text-align: left;
+  transition: background 0.12s ease;
+}
+.pos-drawer-theme-btn:hover { background: var(--page-plane); }
+.pos-drawer-theme-btn:active { transform: none; }
+.pos-drawer-theme-btn svg { flex-shrink: 0; color: var(--text-secondary); }
 
 .page-header {
   display: flex;
@@ -225,6 +285,7 @@ label {
   border-radius: var(--radius-lg);
   padding: 18px 20px;
   box-shadow: var(--shadow-sm);
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
 }
 
 .card + .card { margin-top: 16px; }
@@ -251,6 +312,7 @@ th {
   text-transform: uppercase;
   letter-spacing: 0.02em;
 }
+tbody tr { transition: background 0.12s ease; }
 tbody tr:hover { background: var(--page-plane); }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 
@@ -304,6 +366,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   justify-content: center;
   z-index: 900;
   padding: 20px;
+  animation: modal-overlay-in 0.15s ease;
 }
 .modal {
   background: var(--surface-2);
@@ -314,6 +377,15 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   max-height: 90vh;
   overflow-y: auto;
   box-shadow: var(--shadow-md);
+  animation: modal-in 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes modal-overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes modal-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 .modal-actions {
   display: flex;
@@ -551,6 +623,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   color: var(--text-secondary);
   font-weight: 600;
   border-bottom: 2px solid transparent;
+  transition: color 0.15s ease, border-color 0.15s ease;
 }
 .tabs button.active { color: var(--series-1); border-bottom-color: var(--series-1); }
 .tabs button:hover { background: transparent; color: var(--text-primary); }

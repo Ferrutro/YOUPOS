@@ -30,12 +30,18 @@ router.get('/api/held-sales', authenticate, async (req, res) => {
           LIMIT 100
         `)
         .all();
+  // En modo cocina se lee de las columnas "foto" (kitchen_items_json /
+  // kitchen_order_type_json), NO de items_json/order_type_json en vivo —
+  // así un "Guardar" posterior (que sí actualiza las columnas en vivo) no
+  // cambia lo que ve el cocinero hasta que se vuelva a presionar "Enviar".
   const heldSales = rows.map((r) => {
+    const itemsSource = kitchenOnly ? r.kitchen_items_json : r.items_json;
+    const orderTypeSource = kitchenOnly ? r.kitchen_order_type_json : r.order_type_json;
     let items = [];
-    try { items = JSON.parse(r.items_json); } catch { items = []; }
+    try { items = JSON.parse(itemsSource); } catch { items = []; }
     let order_type = null;
-    if (r.order_type_json) {
-      try { order_type = JSON.parse(r.order_type_json); } catch { order_type = null; }
+    if (orderTypeSource) {
+      try { order_type = JSON.parse(orderTypeSource); } catch { order_type = null; }
     }
     return { ...r, items, order_type };
   });
@@ -83,11 +89,19 @@ router.put('/api/held-sales/:id', authenticate, async (req, res) => {
 // mandado antes, no lo pisa — así la cola respeta cuándo llegó originalmente
 // aunque se le agreguen artículos después. El estado siempre vuelve a
 // 'pending', porque un reenvío casi siempre es "hay algo nuevo que preparar".
+// También copia items_json/order_type_json (en vivo) a las columnas "foto"
+// kitchen_items_json/kitchen_order_type_json — es el ÚNICO lugar que las
+// toca, por eso cocina solo se entera de cambios cuando se presiona "Enviar"
+// (nunca con "Guardar", que solo actualiza las columnas en vivo).
 router.post('/api/held-sales/:id/send-to-kitchen', authenticate, async (req, res) => {
   const row = db.prepare('SELECT * FROM held_sales WHERE id = ?').get(req.params.id);
   if (!row) throw new HttpError(404, 'Esa cuenta ya no existe.');
   db.prepare(`
-    UPDATE held_sales SET kitchen_status = 'pending', kitchen_sent_at = COALESCE(kitchen_sent_at, datetime('now'))
+    UPDATE held_sales SET
+      kitchen_status = 'pending',
+      kitchen_sent_at = COALESCE(kitchen_sent_at, datetime('now')),
+      kitchen_items_json = items_json,
+      kitchen_order_type_json = order_type_json
     WHERE id = ?
   `).run(req.params.id);
   sendJson(res, 200, { ok: true });
@@ -104,6 +118,17 @@ router.post('/api/held-sales/:id/kitchen-status', authenticate, async (req, res)
     throw new HttpError(400, 'Estado de cocina inválido.');
   }
   db.prepare('UPDATE held_sales SET kitchen_status = ? WHERE id = ?').run(b.status, req.params.id);
+  sendJson(res, 200, { ok: true });
+});
+
+// Comentario de cocina (ej. "sin hielo para toda la mesa") — aparte de PUT
+// para que la pantalla de cocina pueda guardarlo sin tener que reenviar
+// items/order_type completos, que ahí no tiene cargados.
+router.post('/api/held-sales/:id/note', authenticate, async (req, res) => {
+  const row = db.prepare('SELECT * FROM held_sales WHERE id = ?').get(req.params.id);
+  if (!row) throw new HttpError(404, 'Esa cuenta ya no existe.');
+  const b = await readJsonBody(req);
+  db.prepare('UPDATE held_sales SET note = ? WHERE id = ?').run(b.note ? String(b.note).slice(0, 500) : null, req.params.id);
   sendJson(res, 200, { ok: true });
 });
 

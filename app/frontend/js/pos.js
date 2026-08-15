@@ -25,8 +25,14 @@ let ticketNote = '';
 let lastSale = null;
 let heldSales = [];
 let toolbarLayout = { top: null, bottom: null, quick: null };
-let currentOrderType = null; // { type, label, detail } | null = "Mostrador" (venta normal)
+let currentOrderType = null; // { type, label, detail, customer_name } | null = sin cuenta abierta todavía
 let currentAccountHeldId = null; // id en held_sales que respalda la cuenta en pantalla, o null si todavía no se ha guardado
+
+// Valor especial para el <select> de "Cliente" cuando la cuenta abierta trae
+// un nombre escrito a mano (ej. "Familia Pérez" al abrir la Mesa 5) que no
+// corresponde a ningún cliente registrado — se muestra igual, nada más no
+// tiene un customer_id real detrás.
+const FREE_NAME_VALUE = '__free_name__';
 
 // ---------- Cobro: constantes compartidas ----------
 // Nombres viejos, fijos, de antes de que los métodos de pago fueran
@@ -104,7 +110,7 @@ shell.innerHTML = `
       <div class="cliente-row">
         <label>Cliente <span class="req">*</span></label>
         <div class="cliente-select-row">
-          <select id="customer-select"><option value="">Público en general</option></select>
+          <select id="customer-select"><option value="">Ticket vacío</option></select>
           <button class="icon-btn" id="edit-customer-btn" title="Nuevo cliente rápido">${icon('edit', 17)}</button>
         </div>
       </div>
@@ -392,10 +398,20 @@ function maybeShowLowStockAlert() {
 
 function renderCustomerOptions() {
   const current = customerSelect.value;
+  // Si la cuenta abierta trae un nombre escrito a mano y no hay un cliente
+  // REGISTRADO elegido, ese nombre se agrega como opción (así se ve en
+  // "Cliente" aunque no exista como cliente de verdad en el sistema).
+  const freeName = !selectedCustomerId && currentOrderType?.customer_name ? currentOrderType.customer_name : null;
   customerSelect.innerHTML =
-    '<option value="">Público en general</option>' + customers.map((c) => `<option value="${c.id}">${c.name}</option>`).join('');
-  customerSelect.value = current;
-  customerSelect.onchange = () => { selectedCustomerId = customerSelect.value || null; };
+    '<option value="">Ticket vacío</option>' +
+    (freeName ? `<option value="${FREE_NAME_VALUE}">${freeName}</option>` : '') +
+    customers.map((c) => `<option value="${c.id}">${c.name}</option>`).join('');
+  customerSelect.value = freeName ? FREE_NAME_VALUE : current;
+  customerSelect.onchange = () => {
+    const v = customerSelect.value;
+    selectedCustomerId = v && v !== FREE_NAME_VALUE ? v : null;
+    if (v !== FREE_NAME_VALUE) renderCustomerOptions(); // si eligen otra cosa, la opción del nombre libre ya no aplica
+  };
 }
 
 // ---------- Rail de categorías ----------
@@ -520,6 +536,14 @@ function renderProducts() {
 // dos tacos de dos clientes distintos en la misma cuenta).
 // Devuelve el lineId de la línea que quedó afectada (nueva o la que se sumó).
 function addToCart(productId, qty = 1) {
+  // No se puede vender "al aire" — hay que abrir una cuenta (mesa, para
+  // llevar, a domicilio...) primero, para que cocina y el ticket siempre
+  // sepan de dónde viene el pedido.
+  if (!currentOrderType) {
+    toast('Abre una cuenta (mesa, para llevar, etc.) antes de agregar productos.', 'error');
+    openOrderTypeModal();
+    return null;
+  }
   const product = products.find((p) => p.id === productId);
   if (!product) return null;
 
@@ -881,9 +905,9 @@ async function newSale() {
   cart = [];
   ticketNote = '';
   selectedCustomerId = null;
-  customerSelect.value = '';
   currentAccountHeldId = null;
   setOrderType(null);
+  renderCustomerOptions();
   renderCart();
   await refreshHeldSales();
 }
@@ -1011,9 +1035,9 @@ async function startNewAccount(orderType) {
   cart = [];
   ticketNote = '';
   selectedCustomerId = null;
-  customerSelect.value = '';
   currentAccountHeldId = null;
   setOrderType(orderType);
+  renderCustomerOptions(); // refleja el nombre escrito al abrir la cuenta (si trae uno) en "Cliente"
   renderCart();
   await persistCurrentAccount(); // crea de inmediato el respaldo de la cuenta nueva, aunque esté vacía
   await refreshHeldSales();
@@ -1054,9 +1078,9 @@ async function switchToHeldAccount(id) {
   cart = restoredCart;
   ticketNote = held.note || '';
   selectedCustomerId = held.customer_id || null;
-  customerSelect.value = held.customer_id || '';
   setOrderType(held.order_type || null);
   currentAccountHeldId = held.id; // seguimos respaldados por el MISMO id, no se borra ni se recrea
+  renderCustomerOptions(); // refleja el cliente real o el nombre escrito de esta cuenta en "Cliente"
   renderCart();
   await refreshHeldSales();
   toast('Cuenta abierta.', 'success');
@@ -1119,9 +1143,9 @@ async function discardCurrentAccount() {
   cart = [];
   ticketNote = '';
   selectedCustomerId = null;
-  customerSelect.value = '';
   currentAccountHeldId = null;
   setOrderType(null);
+  renderCustomerOptions();
   renderCart();
   await refreshHeldSales();
 }
@@ -1293,7 +1317,7 @@ function showOrderTypeExtra(type, overlay, parentOverlay) {
       const table = extra.querySelector('#ot-table').value.trim();
       const name = extra.querySelector('#ot-name').value.trim();
       if (!table) { toast('Indica el número o nombre de la mesa.', 'error'); return; }
-      confirmAndClose({ type, label: `Mesa ${table}${name ? ' · ' + name : ''}` });
+      confirmAndClose({ type, label: `Mesa ${table}${name ? ' · ' + name : ''}`, customer_name: name || null });
     });
   } else if (type === 'takeaway') {
     extra.innerHTML = `
@@ -1302,7 +1326,7 @@ function showOrderTypeExtra(type, overlay, parentOverlay) {
     `;
     extra.querySelector('#ot-confirm').addEventListener('click', () => {
       const name = extra.querySelector('#ot-name').value.trim();
-      confirmAndClose({ type, label: `Para llevar${name ? ' · ' + name : ''}` });
+      confirmAndClose({ type, label: `Para llevar${name ? ' · ' + name : ''}`, customer_name: name || null });
     });
   } else if (type === 'delivery') {
     extra.innerHTML = `
@@ -1320,6 +1344,7 @@ function showOrderTypeExtra(type, overlay, parentOverlay) {
         type,
         label: `A domicilio${name ? ' · ' + name : ''}`,
         detail: [address, phone].filter(Boolean).join(' · '),
+        customer_name: name || null,
       });
     });
   } else if (type === 'platform') {

@@ -108,6 +108,16 @@ export function migrate() {
   addColumnIfMissing('held_sales', 'order_type_json', 'TEXT');
   addColumnIfMissing('held_sales', 'kitchen_status', 'TEXT');
   addColumnIfMissing('held_sales', 'kitchen_sent_at', 'TEXT');
+  addColumnIfMissing('held_sales', 'kitchen_items_json', 'TEXT');
+  addColumnIfMissing('held_sales', 'kitchen_order_type_json', 'TEXT');
+  // Cuentas que ya estaban en cocina (kitchen_status no nulo) antes de que
+  // existieran las columnas "foto" de arriba: sin este relleno de una sola
+  // vez, la pantalla de cocina las mostraría sin artículos (kitchen_items_json
+  // NULL). Es seguro correr siempre: solo toca filas donde la foto está vacía.
+  db.exec(`
+    UPDATE held_sales SET kitchen_items_json = items_json, kitchen_order_type_json = order_type_json
+    WHERE kitchen_status IS NOT NULL AND kitchen_items_json IS NULL
+  `);
   // Etiqueta libre, usada solo por ventas viejas con el método "Otro" de
   // antes (ej. "Vales de despensa"); se conserva por si ya la usaste.
   addColumnIfMissing('sale_payments', 'label', 'TEXT');

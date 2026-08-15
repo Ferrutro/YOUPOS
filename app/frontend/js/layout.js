@@ -1,7 +1,13 @@
 import { api, getUser, clearSession } from './api.js';
 import { icon } from './icons.js';
+import { getTheme, applyTheme, toggleTheme } from './theme.js';
 
 const ROLE_LABELS = { admin: 'Administrador', manager: 'Gerente', cashier: 'Cajero' };
+const THEME_KEY = 'youpos_theme';
+
+// Se aplica de inmediato al cargar el módulo (antes de pintar nada), para
+// que no haya un parpadeo claro→oscuro apenas se abre la pantalla.
+applyTheme(getTheme(THEME_KEY, 'light'));
 
 // Un solo menú de navegación (panel deslizante desde la derecha), igual en
 // TODAS las pantallas — punto de venta incluido — para que desde cualquier
@@ -32,6 +38,10 @@ export function openNavDrawer() {
     </div>
     <nav class="pos-drawer-list">
       ${items.map((i) => `<a href="${i.href}">${icon(i.ico, 18)}<span>${i.label}</span></a>`).join('')}
+      <button type="button" id="drawer-theme-toggle" class="pos-drawer-theme-btn">
+        ${icon(getTheme(THEME_KEY, 'light') === 'dark' ? 'sun' : 'moon', 18)}
+        <span>${getTheme(THEME_KEY, 'light') === 'dark' ? 'Modo claro' : 'Modo oscuro'}</span>
+      </button>
       <a href="/index.html" id="drawer-logout" class="logout">${icon('logout', 18)}<span>Cerrar sesión</span></a>
     </nav>
   `;
@@ -57,6 +67,11 @@ export function openNavDrawer() {
     e.preventDefault();
     clearSession();
     window.location.href = '/index.html';
+  });
+  drawer.querySelector('#drawer-theme-toggle').addEventListener('click', () => {
+    const next = toggleTheme(THEME_KEY, 'light');
+    const btn = drawer.querySelector('#drawer-theme-toggle');
+    btn.innerHTML = `${icon(next === 'dark' ? 'sun' : 'moon', 18)}<span>${next === 'dark' ? 'Modo claro' : 'Modo oscuro'}</span>`;
   });
 
   // El nombre del negocio se completa aparte (no bloquea abrir el menú).
