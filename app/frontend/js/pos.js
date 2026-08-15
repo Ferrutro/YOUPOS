@@ -93,7 +93,7 @@ shell.innerHTML = `
     <div class="spacer"></div>
     <div class="meta">${user.name}</div>
     <div class="meta clock" id="clock">--:--</div>
-    <button class="icon-btn" id="settings-menu-btn" title="Menú">${icon('settings', 18)}</button>
+    <button class="icon-btn" id="settings-menu-btn" title="Configuración">${icon('settings', 18)}</button>
   </div>
 
   <div class="pos-toolbar" id="function-toolbar"></div>
