@@ -93,6 +93,10 @@
 }
 .cmd-add-btn:hover { background: var(--pos-surface-3); }
 
+/* Cancelar / Guardar / Enviar a cocina — 3 botones en vez de los 2 que
+   .big-actions-row trae por defecto (Cancelar/Pagar) en el punto de venta. */
+.big-actions-row.cmd-actions-3 { grid-template-columns: 1fr 1fr 1.3fr; }
+
 /* --- Selector de productos (modal a pantalla completa en celular) --- */
 .cmd-picker-modal {
   width: 100%;

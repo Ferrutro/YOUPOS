@@ -14,8 +14,9 @@ applyTheme(getTheme(THEME_KEY, 'light'));
 // lado se pueda volver al POS, ir a otra sección, o cerrar sesión.
 const NAV_ITEMS = [
   { label: 'Punto de venta', ico: 'home', href: '/pos.html', roles: ['admin', 'manager', 'cashier'] },
-  { label: 'Ventas / Tickets', ico: 'ticket', href: '/sales.html', roles: ['admin', 'manager', 'cashier'] },
+  { label: 'Comandero', ico: 'tabletSmartphone', href: '/comandero.html', roles: ['admin', 'manager', 'cashier'] },
   { label: 'Cocina', ico: 'utensils', href: '/kitchen.html', roles: ['admin', 'manager', 'cashier'] },
+  { label: 'Ventas / Tickets', ico: 'ticket', href: '/sales.html', roles: ['admin', 'manager', 'cashier'] },
   { label: 'Inventario', ico: 'box', href: '/inventory.html', roles: ['admin', 'manager'] },
   { label: 'Corte de caja', ico: 'scissors', href: '/cash.html', roles: ['admin', 'manager', 'cashier'] },
   { label: 'Configuración', ico: 'settings', href: '/settings.html', roles: ['admin'] },

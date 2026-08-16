@@ -21,6 +21,18 @@ let currentOrderType = null; // { type, label, detail? }
 let currentAccountHeldId = null;
 let selectedCustomerId = null;
 
+// "Foto" del carrito + tipo de cuenta tal como quedaron la última vez que se
+// guardó o envió — null = todavía nunca se guardó. Sirve para saber si de
+// verdad hay algo SIN GUARDAR antes de preguntar "¿descartar?" al abrir otra
+// cuenta: si ya se guardó o se envió, no hay nada que perder.
+let lastSavedSnapshot = null;
+function currentSnapshot() {
+  return JSON.stringify({ items: cart, order_type: currentOrderType });
+}
+function hasUnsavedChanges() {
+  return cart.length > 0 && currentSnapshot() !== lastSavedSnapshot;
+}
+
 const ORDER_TYPES = [
   { type: 'table', ico: 'utensils', label: 'Mesas' },
   { type: 'takeaway', ico: 'bag', label: 'Para llevar' },
@@ -89,8 +101,9 @@ function renderShell() {
         <div class="trow"><span>Impuestos</span><span id="cmd-sum-tax">$0.00</span></div>
         <div class="trow total"><span>Total</span><span id="cmd-sum-total">$0.00</span></div>
       </div>
-      <div class="big-actions-row">
+      <div class="big-actions-row cmd-actions-3">
         <button class="big-btn cancel" id="cmd-cancel-btn">Cancelar</button>
+        <button class="big-btn" id="cmd-save-btn">Guardar</button>
         <button class="big-btn pay" id="cmd-send-btn">Enviar a cocina</button>
       </div>
     </div>
@@ -104,6 +117,7 @@ function renderShell() {
   shell.querySelector('#cmd-logout-btn').addEventListener('click', logout);
   shell.querySelector('#cmd-add-product-btn').addEventListener('click', openProductPicker);
   shell.querySelector('#cmd-cancel-btn').addEventListener('click', cancelCurrentAccount);
+  shell.querySelector('#cmd-save-btn').addEventListener('click', saveCurrentAccountManually);
   shell.querySelector('#cmd-send-btn').addEventListener('click', sendToKitchen);
   shell.querySelector('#cmd-customer-select').addEventListener('change', (e) => {
     selectedCustomerId = e.target.value ? Number(e.target.value) : null;
@@ -199,10 +213,11 @@ function openOrderTypeDetailsModal(type) {
 }
 
 function beginNewAccount(orderType) {
-  if (cart.length > 0 && !confirm('Hay artículos sin enviar en la cuenta actual. ¿Descartarlos y abrir una cuenta nueva?')) return;
+  if (hasUnsavedChanges() && !confirm('Hay artículos sin guardar en la cuenta actual. ¿Descartarlos y abrir una cuenta nueva?')) return;
   cart = [];
   currentAccountHeldId = null;
   selectedCustomerId = null;
+  lastSavedSnapshot = null;
   shell.querySelector('#cmd-customer-select').value = '';
   currentOrderType = orderType;
   renderOrderTypeButtons();
@@ -240,7 +255,18 @@ function lineExtraText(item) {
 // personalizar). Para pedir modificadores/ingredientes/notas se usa el
 // ícono "+" de la tarjeta (ver addProductAndCustomize).
 function addProductToCart(product) {
-  const existing = cart.find((i) => i.productId === product.id && !i.discount && !(i.modifiers || []).length && !(i.ingredients || []).length && !i.note);
+  // No se junta con una línea que ya esté separada para otra persona — si
+  // no, un toque rápido después de dividir por comensal le sumaría cantidad
+  // a la persona equivocada.
+  const existing = cart.find(
+    (i) =>
+      i.productId === product.id &&
+      (i.person || 1) === 1 &&
+      !i.discount &&
+      !(i.modifiers || []).length &&
+      !(i.ingredients || []).length &&
+      !i.note
+  );
   if (existing) {
     existing.qty += 1;
   } else {
@@ -339,6 +365,14 @@ function openCustomizeModal(lineId) {
         <label>Notas</label>
         <textarea id="li-note" rows="2" placeholder="Ej. sin cebolla, para regalo...">${item.note || ''}</textarea>
       </div>
+      <div class="field">
+        <div class="flex" style="justify-content:space-between; align-items:center;">
+          <label style="margin:0;">Persona</label>
+          <button type="button" class="link-btn" id="li-new-person">+ Persona</button>
+        </div>
+        <p class="text-secondary" style="margin:2px 0 6px; font-size:11.5px;">Para dividir la comanda de la mesa por persona (ej. cocina la manda separada por comensal).</p>
+        <div id="li-person-chips" class="chip-row"></div>
+      </div>
       <div class="modal-actions">
         <button class="ghost" id="li-cancel">Cancelar</button>
         <button class="primary" id="li-save">Guardar</button>
@@ -362,6 +396,29 @@ function openCustomizeModal(lineId) {
     }
     workingQty += 1;
     refreshQty();
+  });
+
+  let workingPerson = item.person || 1;
+  function maxPersonInCart() {
+    return cart.reduce((m, i) => Math.max(m, i.person || 1), 1);
+  }
+  function renderPersonChips() {
+    const max = Math.max(10, maxPersonInCart(), workingPerson);
+    const chipsEl = overlay.querySelector('#li-person-chips');
+    chipsEl.innerHTML = Array.from({ length: max }, (_, idx) => idx + 1)
+      .map((n) => `<button type="button" class="chip-btn ${n === workingPerson ? 'selected' : ''}" data-person="${n}">Persona ${n}</button>`)
+      .join('');
+    chipsEl.querySelectorAll('.chip-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        workingPerson = Number(btn.dataset.person);
+        renderPersonChips();
+      });
+    });
+  }
+  renderPersonChips();
+  overlay.querySelector('#li-new-person').addEventListener('click', () => {
+    workingPerson = maxPersonInCart() + 1;
+    renderPersonChips();
   });
 
   const workingMods = new Set(item.modifiers);
@@ -410,6 +467,7 @@ function openCustomizeModal(lineId) {
   overlay.querySelector('#li-cancel').addEventListener('click', close);
   overlay.querySelector('#li-save').addEventListener('click', () => {
     item.qty = workingQty;
+    item.person = workingPerson;
     item.modifiers = Array.from(workingMods);
     item.ingredients = Array.from(workingIngs);
     item.note = overlay.querySelector('#li-note').value.trim();
@@ -423,6 +481,10 @@ function renderCart() {
   if (cart.length === 0) {
     body.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--pos-ink-muted); padding:24px;">Sin artículos todavía</td></tr>`;
   } else {
+    // La etiqueta "Persona N" solo se muestra si de verdad se está dividiendo
+    // la cuenta por persona — si todos son "Persona 1" (el caso normal), no
+    // ensucia la vista con algo irrelevante.
+    const splitByPerson = cart.some((i) => (i.person || 1) > 1);
     body.innerHTML = cart
       .map((i) => {
         const t = lineTotals(i);
@@ -436,6 +498,7 @@ function renderCart() {
               </div>
             </td>
             <td class="line-name" data-action="edit">
+              ${splitByPerson ? `<span class="chip-btn selected" style="padding:1px 8px; font-size:10.5px; margin-right:4px;">P${i.person || 1}</span>` : ''}
               <span class="pname">${i.name}</span>
               ${lineExtraText(i) ? `<span class="line-extra">${lineExtraText(i)}</span>` : ''}
             </td>
@@ -548,15 +611,19 @@ function openProductPicker() {
       return true;
     });
     grid.innerHTML = filtered
-      .map(
-        (p) => `
+      .map((p) => {
+        const thumbContent = p.image_data
+          ? `<img src="${p.image_data}" alt="" style="width:100%; height:100%; object-fit:cover;" />`
+          : icon('box', 26);
+        return `
         <button type="button" class="pos-product-tile" data-id="${p.id}" ${p.track_stock && p.stock_qty <= 0 ? 'disabled' : ''}>
           <span class="corner tl" data-action="add" data-id="${p.id}" title="Agregar y personalizar (cantidad, modificadores...)">${icon('plus', 13)}</span>
-          <span class="pname">${p.name}</span>
-          <span class="pprice">${formatMoney(p.sale_price, settings.currency)}${p.track_stock ? ` · ${p.stock_qty} ${p.unit || ''}` : ''}</span>
+          <div class="thumb">${thumbContent}</div>
+          <div class="pname">${p.name}</div>
+          <div class="pprice">${formatMoney(p.sale_price, settings.currency)}${p.track_stock ? ` · ${p.stock_qty} ${p.unit || ''}` : ''}</div>
         </button>
-      `
-      )
+      `;
+      })
       .join('');
     const updateCount = () => { overlay.querySelector('#cmd-picker-count').textContent = `${cart.reduce((s, i) => s + i.qty, 0)} en el carrito`; };
     grid.querySelectorAll('.pos-product-tile').forEach((tile) => {
@@ -622,7 +689,7 @@ async function openAccountsModal() {
 function loadHeldAccount(id) {
   const held = heldSales.find((h) => h.id === id);
   if (!held) return;
-  if (cart.length > 0 && !confirm('Hay artículos sin enviar en la cuenta actual. ¿Descartarlos?')) return;
+  if (hasUnsavedChanges() && !confirm('Hay artículos sin guardar en la cuenta actual. ¿Descartarlos?')) return;
 
   cart = held.items.map((i) => {
     const lineId = nextLineId++;
@@ -638,6 +705,10 @@ function loadHeldAccount(id) {
         discount: i.discount || 0,
         stock: product.stock_qty,
         trackStock: !!product.track_stock,
+        modifiers: i.modifiers || [],
+        ingredients: i.ingredients || [],
+        note: i.note || '',
+        person: i.person || 1,
       };
     }
     return { ...i, lineId };
@@ -648,40 +719,83 @@ function loadHeldAccount(id) {
   shell.querySelector('#cmd-customer-select').value = held.customer_id || '';
   renderOrderTypeButtons();
   renderCart();
+  lastSavedSnapshot = currentSnapshot(); // recién cargada, coincide con lo guardado
   toast('Cuenta cargada.', 'success');
 }
 
-// ---------- Enviar a cocina / cancelar ----------
+// ---------- Guardar / enviar a cocina / cancelar ----------
+// Guarda la cuenta en pantalla (la crea en held_sales la primera vez, o
+// actualiza la misma fila si ya existía) SIN mandarla a cocina — igual que
+// persistCurrentAccount() en el punto de venta. La usan tanto "Guardar"
+// como "Enviar a cocina" (que además marca el envío encima).
+async function persistCurrentAccount() {
+  if (cart.length === 0 && !currentOrderType && !currentAccountHeldId) return;
+  const customerName = shell.querySelector('#cmd-customer-select').selectedOptions[0]?.textContent || null;
+  const payload = {
+    customer_id: selectedCustomerId || null,
+    customer_name: currentOrderType?.label || customerName,
+    items: cart,
+    order_type: currentOrderType || null,
+  };
+  if (currentAccountHeldId) {
+    await api.put(`/api/held-sales/${currentAccountHeldId}`, payload);
+  } else if (cart.length > 0 || currentOrderType) {
+    const res = await api.post('/api/held-sales', payload);
+    currentAccountHeldId = res.id;
+  }
+  lastSavedSnapshot = currentSnapshot();
+}
+
+// Vuelve a pedir las cuentas abiertas — se llama después de guardar o
+// enviar, para que la lista de "Cuentas abiertas" (aquí y en el POS) quede
+// al día con lo que se acaba de mandar o guardar desde cualquiera de los dos.
+async function refreshHeldSales() {
+  try {
+    heldSales = (await api.get('/api/held-sales')).heldSales;
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+}
+
+// Botón "Guardar": deja la mesa guardada para quien más la esté atendiendo,
+// sin mandarla a cocina — solo "Enviar a cocina" hace eso.
+async function saveCurrentAccountManually() {
+  if (cart.length === 0 && !currentOrderType) {
+    toast('No hay nada que guardar todavía.', 'info');
+    return;
+  }
+  const btn = shell.querySelector('#cmd-save-btn');
+  btn.disabled = true;
+  try {
+    await persistCurrentAccount();
+    await refreshHeldSales();
+    toast(currentOrderType ? `Cuenta "${currentOrderType.label}" guardada.` : 'Cuenta guardada.', 'success');
+  } catch (err) {
+    toast(err.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 async function sendToKitchen() {
   if (cart.length === 0) { toast('Agrega al menos un producto antes de enviar.', 'error'); return; }
   if (!currentOrderType) { toast('Elige el tipo de cuenta (mesa, para llevar, etc.) antes de enviar.', 'error'); return; }
 
-  const customerName = shell.querySelector('#cmd-customer-select').selectedOptions[0]?.textContent;
-  const payload = {
-    customer_id: selectedCustomerId || null,
-    customer_name: currentOrderType.label || customerName,
-    items: cart,
-    order_type: currentOrderType,
-  };
   const btn = shell.querySelector('#cmd-send-btn');
   btn.disabled = true;
   try {
-    if (currentAccountHeldId) {
-      await api.put(`/api/held-sales/${currentAccountHeldId}`, payload);
-    } else {
-      const res = await api.post('/api/held-sales', payload);
-      currentAccountHeldId = res.id;
-    }
+    await persistCurrentAccount();
     // Además de guardar la cuenta, la marca como "enviada a cocina" — así
     // aparece en la pantalla de cocina (antes de esto, "Guardar" y "Enviar"
     // hacían exactamente lo mismo puertas adentro).
     await api.post(`/api/held-sales/${currentAccountHeldId}/send-to-kitchen`);
     toast(`Pedido enviado: ${currentOrderType.label}.`, 'success');
-    heldSales = (await api.get('/api/held-sales')).heldSales;
+    await refreshHeldSales();
     cart = [];
     currentOrderType = null;
     currentAccountHeldId = null;
     selectedCustomerId = null;
+    lastSavedSnapshot = null;
     shell.querySelector('#cmd-customer-select').value = '';
     renderOrderTypeButtons();
     renderCart();
@@ -707,6 +821,7 @@ async function cancelCurrentAccount() {
   currentOrderType = null;
   currentAccountHeldId = null;
   selectedCustomerId = null;
+  lastSavedSnapshot = null;
   shell.querySelector('#cmd-customer-select').value = '';
   renderOrderTypeButtons();
   renderCart();
@@ -717,4 +832,18 @@ function logout() {
   window.location.href = '/index.html';
 }
 
+// Refresca held_sales en segundo plano cada pocos segundos, sin avisos y
+// sin tocar la cuenta que esté en pantalla — así lo que se guarda o envía
+// desde el POS (u otra terminal) se refleja solo en "Cuentas abiertas", sin
+// tener que reabrir nada ni recargar la página.
+const HELD_SALES_POLL_MS = 8000;
+async function pollHeldSalesBackground() {
+  try {
+    heldSales = (await api.get('/api/held-sales')).heldSales;
+  } catch {
+    // silencioso — es un refresco de fondo, no algo que el usuario pidió
+  }
+}
+
 init();
+setInterval(pollHeldSalesBackground, HELD_SALES_POLL_MS);

@@ -7,11 +7,27 @@ const router = new Router();
 // Ventas puestas "en espera" (F2 en el POS) para retomarlas más tarde.
 // ?kitchen=1 devuelve solo las que sí se mandaron a cocina (kitchen_status
 // no nulo), en orden de llegada (la más vieja primero) — es lo que consume
-// la pantalla de cocina.
+// la pantalla de cocina. ?kitchenHistory=1 devuelve TODO lo que alguna vez
+// se mandó a cocina (kitchen_sent_at no nulo), sin importar si ya se cerró
+// (kitchen_status nulo) o sigue en el tablero, de más reciente a más
+// antiguo — es lo que consume el historial de cocina (para "recuperar" un
+// ticket que se cerró por accidente).
 router.get('/api/held-sales', authenticate, async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   const kitchenOnly = url.searchParams.get('kitchen') === '1';
-  const rows = kitchenOnly
+  const kitchenHistory = url.searchParams.get('kitchenHistory') === '1';
+  const rows = kitchenHistory
+    ? db
+        .prepare(`
+          SELECT hs.*, u.name AS user_name
+          FROM held_sales hs
+          JOIN users u ON u.id = hs.user_id
+          WHERE hs.kitchen_sent_at IS NOT NULL
+          ORDER BY hs.kitchen_sent_at DESC
+          LIMIT 50
+        `)
+        .all()
+    : kitchenOnly
     ? db
         .prepare(`
           SELECT hs.*, u.name AS user_name
@@ -30,13 +46,15 @@ router.get('/api/held-sales', authenticate, async (req, res) => {
           LIMIT 100
         `)
         .all();
-  // En modo cocina se lee de las columnas "foto" (kitchen_items_json /
-  // kitchen_order_type_json), NO de items_json/order_type_json en vivo —
-  // así un "Guardar" posterior (que sí actualiza las columnas en vivo) no
-  // cambia lo que ve el cocinero hasta que se vuelva a presionar "Enviar".
+  // En modo cocina (o su historial) se lee de las columnas "foto"
+  // (kitchen_items_json / kitchen_order_type_json), NO de
+  // items_json/order_type_json en vivo — así un "Guardar" posterior (que sí
+  // actualiza las columnas en vivo) no cambia lo que ve el cocinero hasta
+  // que se vuelva a presionar "Enviar".
+  const useSnapshot = kitchenOnly || kitchenHistory;
   const heldSales = rows.map((r) => {
-    const itemsSource = kitchenOnly ? r.kitchen_items_json : r.items_json;
-    const orderTypeSource = kitchenOnly ? r.kitchen_order_type_json : r.order_type_json;
+    const itemsSource = useSnapshot ? r.kitchen_items_json : r.items_json;
+    const orderTypeSource = useSnapshot ? r.kitchen_order_type_json : r.order_type_json;
     let items = [];
     try { items = JSON.parse(itemsSource); } catch { items = []; }
     let order_type = null;

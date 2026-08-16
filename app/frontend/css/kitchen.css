@@ -12,6 +12,7 @@
   --kd-ink: #f2f4f5;
   --kd-ink-muted: #9aa5aa;
   --kd-danger: #e5534b;
+  --kd-warning: #e0a325;
   --kd-radius: 14px;
 }
 :root[data-theme="light"] {
@@ -22,6 +23,7 @@
   --kd-ink: #161917;
   --kd-ink-muted: #666f68;
   --kd-danger: #c0392b;
+  --kd-warning: #b8860b;
 }
 
 * { box-sizing: border-box; }
@@ -101,7 +103,12 @@ html, body {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
   animation: kd-card-in 0.25s ease;
 }
-.kd-card.kd-late { box-shadow: 0 0 0 2px var(--kd-danger); }
+.kd-card.kd-warning { box-shadow: 0 0 0 2px var(--kd-warning); }
+.kd-card.kd-emergency { box-shadow: 0 0 0 2px var(--kd-danger); animation: kd-card-in 0.25s ease, kd-emergency-pulse 1.4s ease-in-out infinite; }
+@keyframes kd-emergency-pulse {
+  0%, 100% { box-shadow: 0 0 0 2px var(--kd-danger); }
+  50% { box-shadow: 0 0 0 5px var(--kd-danger); }
+}
 @keyframes kd-card-in {
   from { opacity: 0; transform: translateY(-6px) scale(0.98); }
   to { opacity: 1; transform: translateY(0) scale(1); }
@@ -136,7 +143,8 @@ html, body {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-.kd-timer.kd-late { background: var(--kd-danger); color: #fff; }
+.kd-timer.kd-warning { background: var(--kd-warning); color: #1a1a1a; }
+.kd-timer.kd-emergency { background: var(--kd-danger); color: #fff; }
 /* Pestañita al pie del encabezado, como recordatorio de que se toca para cerrar. */
 .kd-card-head::after {
   content: 'Tocar para cerrar';
@@ -205,7 +213,7 @@ html, body {
 .kd-note-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
 
 /* ---------- Modal de configuración (reutiliza .modal/.modal-overlay de styles.css) ---------- */
-.kd-settings-modal { background: var(--kd-surface); color: var(--kd-ink); max-width: 340px; }
+.kd-settings-modal { background: var(--kd-surface); color: var(--kd-ink); max-width: 380px; max-height: 88vh; overflow-y: auto; }
 .kd-settings-row {
   display: flex;
   align-items: center;
@@ -222,6 +230,75 @@ html, body {
 }
 .kd-settings-row:hover { background: var(--kd-line); }
 .kd-settings-row-label { flex: 1; text-align: left; }
+
+.kd-settings-section {
+  margin: 16px 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--kd-line);
+}
+.kd-settings-section-title {
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--kd-ink-muted);
+  margin-bottom: 10px;
+}
+.kd-settings-check-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--kd-ink);
+  margin-bottom: 12px;
+  cursor: pointer;
+}
+.kd-settings-check-row input { width: 18px; height: 18px; flex-shrink: 0; }
+.kd-settings-upload-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  cursor: pointer;
+  font-size: 13px;
+}
+.kd-settings-hint {
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--kd-ink-muted);
+  word-break: break-word;
+}
+.kd-settings-hint strong { color: var(--kd-ink); font-weight: 700; }
+
+/* ---------- Historial de pedidos ---------- */
+#kd-history-list {
+  max-height: 55vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.kd-history-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--kd-surface-2);
+  border: 1px solid var(--kd-line);
+  border-radius: 10px;
+}
+.kd-history-badge {
+  flex-shrink: 0;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--kd-ink-muted);
+  background: var(--kd-bg);
+  border: 1px solid var(--kd-line);
+  border-radius: 999px;
+  padding: 4px 10px;
+  white-space: nowrap;
+}
 
 @media (max-width: 480px) {
   .kd-card { width: 100%; }

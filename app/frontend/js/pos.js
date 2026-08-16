@@ -287,27 +287,20 @@ function renderToolbar(container, buttons) {
 function buildAllToolbarButtons() {
   return [
     toolButton({ id: 'opentab', key: 'F3', ico: 'layers', label: 'Abrir cuenta', onClick: () => openAccountsModal() }),
-    toolButton({ id: 'menu', key: 'F6', ico: 'menu', label: 'Menú', onClick: () => openMenuModal() }),
-    toolButton({ id: 'pricelist', key: 'F9', ico: 'tag', label: 'Precios', onClick: stub('Lista de precios') }),
     toolButton({
       id: 'stock', key: 'F10', ico: 'box', label: 'Existencias',
       onClick: () => (window.location.href = '/inventory.html'),
       disabled: !canManageCatalog,
     }),
-    toolButton({ id: 'shifts', key: 'Ctrl+S', ico: 'refresh', label: 'Turnos', onClick: () => (window.location.href = '/cash.html') }),
     toolButton({ id: 'switchuser', key: 'F12', ico: 'user', label: 'Cambiar usuario', onClick: () => logout() }),
-    toolButton({ id: 'printticket', key: 'Ctrl+P', ico: 'printer', label: 'Imprimir cuenta', onClick: () => printCurrentTicket() }),
-    toolButton({ id: 'reprint', key: 'Ctrl+O', ico: 'printerCheck', label: 'Reimprimir ticket', onClick: () => reprintLastSale() }),
+    toolButton({ id: 'printticket', key: 'Ctrl+P', ico: 'printer', label: 'Imprimir cuenta', onClick: () => openPrintAccountModal() }),
+    toolButton({ id: 'reprint', key: 'Ctrl+O', ico: 'printerCheck', label: 'Reimprimir ticket', onClick: () => openReprintTicketModal() }),
     toolButton({ id: 'drawer', key: 'Ctrl+A', ico: 'drawer', label: 'Abrir cajón', onClick: stub('Abrir cajón (requiere hardware)') }),
     toolButton({ id: 'notes', key: 'Ctrl+K', ico: 'note', label: 'Notas', onClick: () => openStickyNotesBoard() }),
     toolButton({ id: 'calculator', key: 'Ctrl+U', ico: 'calculator', label: 'Calculadora', onClick: () => openCalculator() }),
-    toolButton({ id: 'scale', key: 'Ctrl+B', ico: 'scale', label: 'Báscula', onClick: stub('Báscula (requiere hardware)') }),
-    toolButton({ id: 'keyboard', key: 'Ctrl+N', ico: 'keyboard', label: 'Teclado', onClick: stub('Teclado en pantalla') }),
-    toolButton({ id: 'numpad', key: 'Ctrl+M', ico: 'keypad', label: 'Teclado numérico', onClick: stub('Teclado numérico') }),
+    toolButton({ id: 'scale', key: 'Ctrl+B', ico: 'scale', label: 'Báscula', onClick: () => openScaleModal() }),
     toolButton({ id: 'accounts', key: 'Alt', ico: 'user', label: 'Cuentas', onClick: () => openAccountsModal() }),
     toolButton({ id: 'tickets', key: 'Alt+T', ico: 'ticket', label: 'Tickets', onClick: () => (window.location.href = '/sales.html') }),
-    toolButton({ id: 'invoices', key: 'Alt+F', ico: 'receipt', label: 'Facturas', onClick: stub('Facturación') }),
-    toolButton({ id: 'credits', key: 'Alt+C', ico: 'creditCard', label: 'Créditos', onClick: stub('Ventas a crédito') }),
     toolButton({ id: 'reports', key: 'Alt+R', ico: 'barChart', label: 'Reportes', onClick: () => (window.location.href = '/reports.html'), disabled: !canSeeReports }),
   ];
 }
@@ -1069,6 +1062,7 @@ async function switchToHeldAccount(id) {
         modifiers: i.modifiers || [],
         ingredients: i.ingredients || [],
         note: i.note || '',
+        person: i.person || 1,
       };
     }
     toast(`"${i.name}" ya no está disponible en el catálogo; se agregó con el precio guardado.`, 'info');
@@ -1150,7 +1144,7 @@ async function discardCurrentAccount() {
   await refreshHeldSales();
 }
 
-function openAccountsModal() {
+async function openAccountsModal() {
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
   overlay.innerHTML = `
@@ -1161,7 +1155,7 @@ function openAccountsModal() {
       </div>
       <p class="text-secondary">Abre una cuenta nueva, cambia a otra que ya esté abierta, o marca varias y toca el ícono de juntar.</p>
       <button class="primary" id="acc-new" style="width:100%; margin:10px 0 16px;">+ Nueva cuenta</button>
-      <div id="accounts-list"></div>
+      <div id="accounts-list"><p class="text-secondary">Cargando…</p></div>
       <div class="modal-actions">
         <button class="ghost" id="acc-close">Cerrar</button>
       </div>
@@ -1171,6 +1165,17 @@ function openAccountsModal() {
   overlay.querySelector('#acc-close').addEventListener('click', () => overlay.remove());
   overlay.querySelector('#acc-new').addEventListener('click', () => openOrderTypeModal(null, overlay));
 
+  // Vuelve a pedir las cuentas al servidor cada vez que se abre este modal —
+  // si no, se mostraba la lista tal como quedó la última vez que ESTA
+  // pantalla guardó/mandó algo, y no reflejaba lo que se hubiera guardado o
+  // enviado mientras tanto desde el Comandero (u otra terminal), hasta
+  // recargar la página entera.
+  try {
+    heldSales = (await api.get('/api/held-sales')).heldSales;
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+  if (!overlay.isConnected) return; // se cerró mientras cargaba
   renderAccountsList(overlay);
 }
 
@@ -1370,68 +1375,6 @@ function showOrderTypeExtra(type, overlay, parentOverlay) {
 }
 
 // ---------- Menú: catálogo completo agrupado por categoría, para ver todo de un vistazo ----------
-function openMenuModal() {
-  const overlay = document.createElement('div');
-  overlay.className = 'modal-overlay';
-  overlay.innerHTML = `
-    <div class="modal" style="max-width:640px;">
-      <h3>Menú</h3>
-      <div class="field"><input type="text" id="menu-search" placeholder="Buscar en el menú…" /></div>
-      <div id="menu-list" style="max-height:56vh; overflow-y:auto; margin-top:10px;"></div>
-      <div class="modal-actions"><button class="ghost" id="menu-close">Cerrar</button></div>
-    </div>
-  `;
-  shell.appendChild(overlay);
-  overlay.querySelector('#menu-close').addEventListener('click', () => overlay.remove());
-
-  const listEl = overlay.querySelector('#menu-list');
-  const searchEl = overlay.querySelector('#menu-search');
-
-  function renderMenuList() {
-    const query = searchEl.value.trim().toLowerCase();
-    const groups = categories
-      .map((c) => ({
-        cat: c,
-        items: products.filter((p) => p.category_id === c.id && (!query || p.name.toLowerCase().includes(query))),
-      }))
-      .filter((g) => g.items.length > 0);
-    const uncategorized = products.filter((p) => !p.category_id && (!query || p.name.toLowerCase().includes(query)));
-    if (uncategorized.length) groups.push({ cat: { name: 'Otros' }, items: uncategorized });
-
-    if (groups.length === 0) {
-      listEl.innerHTML = '<p class="text-secondary">Sin productos que coincidan.</p>';
-      return;
-    }
-    listEl.innerHTML = groups
-      .map(
-        (g) => `
-      <div style="margin-bottom:14px;">
-        <div style="font-weight:600; font-size:12.5px; text-transform:uppercase; letter-spacing:.03em; color:var(--pos-ink-muted,#6b6b68); margin-bottom:6px;">${g.cat.name}</div>
-        ${g.items
-          .map(
-            (p) => `
-          <button type="button" class="ghost menu-item-row" data-id="${p.id}" style="width:100%; display:flex; justify-content:space-between; align-items:center; padding:9px 10px; margin-bottom:4px;">
-            <span>${p.name}</span>
-            <span style="display:flex; align-items:center; gap:8px;"><span class="text-secondary">${formatMoney(p.sale_price, settings.currency)}</span>${icon('plus', 16)}</span>
-          </button>
-        `
-          )
-          .join('')}
-      </div>
-    `
-      )
-      .join('');
-    listEl.querySelectorAll('.menu-item-row').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        addToCart(Number(btn.dataset.id));
-        toast('Agregado al ticket.', 'success');
-      });
-    });
-  }
-  searchEl.addEventListener('input', renderMenuList);
-  renderMenuList();
-}
-
 // ---------- Notas tipo "sticky note": pizarrón compartido de la terminal ----------
 const STICKY_COLORS = {
   yellow: '#fff394',
@@ -2000,7 +1943,18 @@ function openCheckoutModal() {
     try {
       const sale = await api.post('/api/sales', {
         customer_id: selectedCustomerId || null,
-        items: cart.map((i) => ({ product_id: i.productId, quantity: i.qty, discount: i.discount || 0, notes: lineExtraText(i) || null })),
+        items: cart.map((i) => ({
+          product_id: i.productId,
+          quantity: i.qty,
+          discount: i.discount || 0,
+          notes: lineExtraText(i) || null,
+          // Solo los usa el backend cuando product_id es null (línea libre,
+          // ej. un artículo pesado en báscula) — si hay product_id, el
+          // backend toma el precio/nombre/impuesto del catálogo y los ignora.
+          unit_price: i.unitPrice,
+          product_name: i.name,
+          tax_rate: i.taxRate,
+        })),
         payments,
       });
       lastSale = {
@@ -2076,7 +2030,7 @@ function printReceipt(sale) {
       <p style="text-align:center; font-size:12px; margin:0 0 6px;">
         ${sale.orderType ? `<strong style="font-size:14px;">${sale.orderType.label}</strong>${sale.orderType.detail ? `<br>${sale.orderType.detail}` : ''}<br>` : ''}
         Folio ${sale.folio}<br>
-        ${new Date().toLocaleString('es-MX')}<br>
+        ${sale.created_at ? formatDate(sale.created_at) : new Date().toLocaleString('es-MX')}<br>
         Atendió: ${user.name} · Cliente: ${sale.customerName || 'Público en general'}
       </p>
 
@@ -2109,12 +2063,47 @@ function printReceipt(sale) {
 // precios ni totales. El mesero la manda cuando quiere avisar a cocina de
 // un pedido nuevo o de un cambio (p. ej. "sin cebolla" que se agregó
 // después de tomar la orden).
-async function printKitchenTicket() {
+function printKitchenTicket() {
   if (cart.length === 0) {
     toast('No hay artículos que enviar a cocina.', 'error');
     return;
   }
+  openSendToKitchenModal();
+}
 
+// Antes de mandar a cocina se puede dejar un comentario (ej. "sin cebolla
+// en todo") — es opcional a propósito: no tiene sentido que en cocina lo
+// tengan que escribir desde la tablet o la impresora, así que se captura
+// aquí, del lado de quien manda el pedido, justo antes de enviarlo. Si no
+// se escribe nada, se manda igual sin bloquear.
+function openSendToKitchenModal() {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal" style="max-width:380px;">
+      <h3>Enviar a cocina</h3>
+      <div class="field">
+        <label>Comentario para cocina (opcional)</label>
+        <textarea id="kitchen-send-note" rows="3" placeholder="Ej. sin cebolla, todo para llevar...">${ticketNote || ''}</textarea>
+      </div>
+      <div class="modal-actions">
+        <button class="ghost" id="kitchen-send-cancel">Cancelar</button>
+        <button class="primary" id="kitchen-send-confirm">Enviar</button>
+      </div>
+    </div>
+  `;
+  shell.appendChild(overlay);
+  const textarea = overlay.querySelector('#kitchen-send-note');
+  textarea.focus();
+  overlay.querySelector('#kitchen-send-cancel').addEventListener('click', () => overlay.remove());
+  overlay.querySelector('#kitchen-send-confirm').addEventListener('click', async () => {
+    ticketNote = textarea.value.trim();
+    overlay.remove();
+    await sendToKitchenNow();
+  });
+}
+
+async function sendToKitchenNow() {
   // Guarda la cuenta (si no tenía respaldo en held_sales todavía, la crea)
   // y la marca como enviada a cocina — así aparece en la pantalla de
   // cocina, además de imprimirse en papel abajo.
@@ -2170,21 +2159,24 @@ async function printKitchenTicket() {
   toast('Comanda enviada a cocina.', 'success');
 }
 
-function printCurrentTicket() {
-  if (cart.length === 0) {
-    toast('El ticket está vacío.', 'error');
+// Imprime un pre-ticket (venta no confirmada) para cualquier lista de
+// artículos + tipo de cuenta — lo usa tanto la cuenta en pantalla como
+// cualquier cuenta abierta elegida en openPrintAccountModal().
+function printPreTicket(items, orderType) {
+  if (!items || items.length === 0) {
+    toast('Esa cuenta está vacía.', 'error');
     return;
   }
-  const total = cart.reduce((s, i) => s + lineTotals(i).lineTotal, 0);
+  const total = items.reduce((s, i) => s + lineTotals(i).lineTotal, 0);
   const printArea = document.getElementById('print-area');
   printArea.innerHTML = `
     <div style="font-family: monospace; width: 280px; margin: 0 auto; padding: 16px;">
       ${settings.business_logo ? `<div style="text-align:center; margin-bottom:6px;"><img src="${settings.business_logo}" style="max-width:140px; max-height:140px;" /></div>` : ''}
       <h3 style="text-align:center;">${settings.business_name || 'Mi Negocio'}</h3>
       <p style="text-align:center; font-size:12px;">Pre-ticket (venta no confirmada)</p>
-      ${currentOrderType ? `<p style="text-align:center; font-size:12px;">${currentOrderType.label}${currentOrderType.detail ? ' · ' + currentOrderType.detail : ''}</p>` : ''}
+      ${orderType ? `<p style="text-align:center; font-size:12px;">${orderType.label}${orderType.detail ? ' · ' + orderType.detail : ''}</p>` : ''}
       <hr />
-      ${cart
+      ${items
         .map(
           (i) =>
             `<p>${i.qty} x ${i.name}<br>${formatMoney(lineTotals(i).lineTotal, settings.currency)}${lineExtraText(i) ? `<br><em>${lineExtraText(i)}</em>` : ''}</p>`
@@ -2197,12 +2189,238 @@ function printCurrentTicket() {
   window.print();
 }
 
-function reprintLastSale() {
-  if (!lastSale) {
-    toast('Todavía no hay ninguna venta para reimprimir.', 'error');
+// "Imprimir cuenta": elegir de entre las cuentas abiertas (la que está en
+// pantalla + las guardadas) cuál imprimir — no imprime directo la cuenta
+// actual, porque puede haber varias mesas abiertas a la vez.
+function openPrintAccountModal() {
+  const entries = [];
+  if (cart.length > 0 || currentOrderType) {
+    entries.push({
+      source: 'current',
+      id: 'current',
+      order_type: currentOrderType,
+      items: cart,
+      customer_name: customerSelect.selectedOptions[0]?.textContent,
+    });
+  }
+  heldSales.forEach((h) => {
+    if (h.id === currentAccountHeldId) return; // ya se muestra como "current" (misma cuenta, mismo id)
+    entries.push({ source: 'held', id: h.id, order_type: h.order_type, items: h.items, customer_name: h.customer_name });
+  });
+
+  if (entries.length === 0) {
+    toast('No hay cuentas abiertas para imprimir.', 'info');
     return;
   }
-  printReceipt(lastSale);
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal" style="max-width:480px;">
+      <h3>Imprimir cuenta</h3>
+      <p class="text-secondary">Elige una cuenta abierta para imprimir su pre-ticket.</p>
+      <div id="print-account-list"></div>
+      <div class="modal-actions"><button class="ghost" id="print-account-close">Cerrar</button></div>
+    </div>
+  `;
+  shell.appendChild(overlay);
+  overlay.querySelector('#print-account-close').addEventListener('click', () => overlay.remove());
+
+  const listEl = overlay.querySelector('#print-account-list');
+  listEl.innerHTML = entries
+    .map(
+      (e) => `
+    <button type="button" class="ghost" data-source="${e.source}" data-id="${e.id}" style="width:100%; display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid var(--pos-line, #e5e5e3);">
+      <span>
+        <div style="font-weight:600; font-size:13px;">${accountLabel(e)}${e.source === 'current' ? ' <span style="color:var(--pos-accent, #2e7d32); font-weight:700;">(en pantalla)</span>' : ''}</div>
+        <div class="text-secondary" style="font-size:11.5px;">${e.items.length} artículo(s) · ${formatMoney(heldSaleTotal(e), settings.currency)}</div>
+      </span>
+      ${icon('printer', 18)}
+    </button>
+  `
+    )
+    .join('');
+  listEl.querySelectorAll('button[data-id]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const entry = entries.find((e) => e.source === btn.dataset.source && String(e.id) === btn.dataset.id);
+      overlay.remove();
+      printPreTicket(entry.items, entry.order_type);
+    });
+  });
+}
+
+// "Reimprimir ticket": elegir de entre las ventas ya cobradas cuál
+// reimprimir (no solo la última) — busca por folio o cliente.
+function openReprintTicketModal() {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal" style="max-width:480px;">
+      <h3>Reimprimir ticket</h3>
+      <div class="field"><input type="text" id="reprint-search" placeholder="Buscar por folio o cliente…" /></div>
+      <div id="reprint-list" style="max-height:50vh; overflow-y:auto; margin-top:6px;"><p class="text-secondary">Cargando…</p></div>
+      <div class="modal-actions"><button class="ghost" id="reprint-close">Cerrar</button></div>
+    </div>
+  `;
+  shell.appendChild(overlay);
+  overlay.querySelector('#reprint-close').addEventListener('click', () => overlay.remove());
+
+  const listEl = overlay.querySelector('#reprint-list');
+  const searchEl = overlay.querySelector('#reprint-search');
+  let sales = [];
+
+  function renderList() {
+    const query = searchEl.value.trim().toLowerCase();
+    const filtered = !query
+      ? sales
+      : sales.filter((s) => s.folio.toLowerCase().includes(query) || (s.customer_name || '').toLowerCase().includes(query));
+    if (filtered.length === 0) {
+      listEl.innerHTML = '<p class="text-secondary">No se encontraron ventas.</p>';
+      return;
+    }
+    listEl.innerHTML = filtered
+      .slice(0, 100)
+      .map(
+        (s) => `
+      <button type="button" class="ghost" data-id="${s.id}" style="width:100%; display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid var(--pos-line, #e5e5e3);">
+        <span>
+          <div style="font-weight:600; font-size:13px;">${s.folio}${s.status !== 'completed' ? ` <span style="color:var(--pos-cancel-color, #c0392b); font-weight:700;">(${s.status === 'cancelled' ? 'cancelada' : 'reembolsada'})</span>` : ''}</div>
+          <div class="text-secondary" style="font-size:11.5px;">${formatDate(s.created_at)} · ${s.customer_name || 'Público en general'}</div>
+        </span>
+        <span style="font-weight:600;">${formatMoney(s.total, settings.currency)}</span>
+      </button>
+    `
+      )
+      .join('');
+    listEl.querySelectorAll('button[data-id]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        overlay.remove();
+        printSaleById(Number(btn.dataset.id));
+      });
+    });
+  }
+  searchEl.addEventListener('input', renderList);
+
+  api
+    .get('/api/sales')
+    .then((res) => {
+      sales = res.sales;
+      renderList();
+    })
+    .catch((err) => {
+      listEl.innerHTML = `<p class="text-secondary">${err.message}</p>`;
+    });
+}
+
+async function printSaleById(id) {
+  try {
+    const { sale, items, payments } = await api.get(`/api/sales/${id}`);
+    printReceipt({
+      folio: sale.folio,
+      created_at: sale.created_at,
+      subtotal: sale.subtotal,
+      discount_total: sale.discount_total,
+      tax_total: sale.tax_total,
+      total: sale.total,
+      customerName: sale.customer_name,
+      payments,
+      change: 0,
+      items: items.map((i) => ({ qty: i.quantity, name: i.product_name, unitPrice: i.unit_price, lineTotal: i.line_total, extra: i.notes || '' })),
+    });
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+}
+
+// Báscula: captura manual de peso/precio unitario (cualquier marca conectada
+// al equipo puede alimentar estos mismos campos más adelante) — "Aceptar"
+// agrega el resultado como línea libre al ticket.
+function openScaleModal() {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal" style="max-width:320px;">
+      <h3>Báscula</h3>
+      <div class="field">
+        <label>Peso (kg)</label>
+        <input type="number" id="scale-weight" step="0.001" min="0" value="0.0000" />
+      </div>
+      <div class="field">
+        <label>Precio unitario</label>
+        <input type="number" id="scale-price" step="0.01" min="0" value="0.00" />
+      </div>
+      <div class="field">
+        <label>Total</label>
+        <input type="text" id="scale-total" value="${formatMoney(0, settings.currency)}" disabled />
+      </div>
+      <div class="modal-actions">
+        <button class="ghost" id="scale-close">Cerrar</button>
+        <button class="ghost" id="scale-connect">Conectar</button>
+        <button class="primary" id="scale-accept">Aceptar</button>
+      </div>
+    </div>
+  `;
+  shell.appendChild(overlay);
+
+  const weightEl = overlay.querySelector('#scale-weight');
+  const priceEl = overlay.querySelector('#scale-price');
+  const totalEl = overlay.querySelector('#scale-total');
+
+  function updateTotal() {
+    const weight = Number(weightEl.value) || 0;
+    const price = Number(priceEl.value) || 0;
+    totalEl.value = formatMoney(weight * price, settings.currency);
+  }
+  weightEl.addEventListener('input', updateTotal);
+  priceEl.addEventListener('input', updateTotal);
+
+  overlay.querySelector('#scale-close').addEventListener('click', () => overlay.remove());
+  overlay.querySelector('#scale-connect').addEventListener('click', () => {
+    toast('Conectar báscula: requiere el driver del fabricante instalado en este equipo.', 'info');
+  });
+  overlay.querySelector('#scale-accept').addEventListener('click', () => {
+    const weight = Number(weightEl.value);
+    const price = Number(priceEl.value);
+    if (!(weight > 0) || !(price > 0)) {
+      toast('Captura el peso y el precio unitario.', 'error');
+      return;
+    }
+    if (!currentOrderType) {
+      overlay.remove();
+      toast('Abre una cuenta (mesa, para llevar, etc.) antes de agregar productos.', 'error');
+      openOrderTypeModal();
+      return;
+    }
+    cart.push({
+      lineId: nextLineId++,
+      productId: null,
+      name: 'Producto por peso',
+      qty: weight,
+      unitPrice: price,
+      taxRate: 0,
+      discount: 0,
+      modifiers: [],
+      ingredients: [],
+      note: `${weight} kg`,
+    });
+    renderCart();
+    overlay.remove();
+    toast('Producto agregado al ticket.', 'success');
+  });
+}
+
+// Refresca held_sales en segundo plano cada pocos segundos, sin avisos y sin
+// tocar la cuenta que esté en pantalla — así lo que se guarda o envía desde
+// el Comandero (u otra terminal) se refleja solo en listas como "Cuentas" o
+// "Imprimir cuenta", sin tener que reabrir nada ni recargar la página.
+const HELD_SALES_POLL_MS = 8000;
+async function pollHeldSalesBackground() {
+  try {
+    const res = await api.get('/api/held-sales');
+    heldSales = res.heldSales;
+  } catch {
+    // silencioso — es un refresco de fondo, no una acción que el usuario pidió
+  }
 }
 
 // ---------- Arranque ----------
@@ -2211,3 +2429,4 @@ buildBottomToolbar();
 buildTicketQuickActions();
 renderCart();
 loadAll();
+setInterval(pollHeldSalesBackground, HELD_SALES_POLL_MS);

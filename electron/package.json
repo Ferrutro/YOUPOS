@@ -1,0 +1,36 @@
+{
+  "name": "youpos-desktop",
+  "version": "1.0.0",
+  "description": "Envoltorio de escritorio (Electron) para YOUPOS — misma app de siempre, sin verse como un navegador.",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "dev": "electron .",
+    "build": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "com.youpos.app",
+    "productName": "YOUPOS",
+    "asar": true,
+    "files": [
+      "main.js",
+      "assets/**"
+    ],
+    "extraResources": [
+      { "from": "../MiPOS.exe", "to": "backend/MiPOS.exe" },
+      { "from": "../app", "to": "backend/app", "filter": ["**/*", "!backend/data/*.db", "!backend/data/*.db-shm", "!backend/data/*.db-wal"] }
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}

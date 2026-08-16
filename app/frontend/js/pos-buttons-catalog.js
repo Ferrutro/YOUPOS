@@ -8,10 +8,7 @@
 export const POS_BUTTON_CATALOG = [
   // Barra superior (funciones)
   { id: 'opentab', label: 'Abrir cuenta', ico: 'layers', sections: ['top'] },
-  { id: 'menu', label: 'Menú', ico: 'menu', sections: ['top'] },
-  { id: 'pricelist', label: 'Precios', ico: 'tag', sections: ['top'] },
   { id: 'stock', label: 'Existencias', ico: 'box', sections: ['top'] },
-  { id: 'shifts', label: 'Turnos', ico: 'refresh', sections: ['top', 'bottom'] },
   { id: 'switchuser', label: 'Cambiar usuario', ico: 'user', sections: ['top'] },
 
   // Barra inferior
@@ -21,12 +18,8 @@ export const POS_BUTTON_CATALOG = [
   { id: 'notes', label: 'Notas', ico: 'note', sections: ['bottom'] },
   { id: 'calculator', label: 'Calculadora', ico: 'calculator', sections: ['bottom'] },
   { id: 'scale', label: 'Báscula', ico: 'scale', sections: ['bottom'] },
-  { id: 'keyboard', label: 'Teclado', ico: 'keyboard', sections: ['bottom'] },
-  { id: 'numpad', label: 'Teclado numérico', ico: 'keypad', sections: ['bottom'] },
   { id: 'accounts', label: 'Cuentas', ico: 'user', sections: ['bottom'] },
   { id: 'tickets', label: 'Tickets', ico: 'ticket', sections: ['bottom'] },
-  { id: 'invoices', label: 'Facturas', ico: 'receipt', sections: ['bottom'] },
-  { id: 'credits', label: 'Créditos', ico: 'creditCard', sections: ['bottom'] },
   { id: 'reports', label: 'Reportes', ico: 'barChart', sections: ['bottom'] },
 
   // Acciones rápidas del ticket
@@ -46,8 +39,8 @@ export const POS_TOOLBAR_SECTIONS = [
 // arriba) para que cada barra conserve su orden original sin importar en
 // qué otras barras también esté disponible ese mismo botón.
 const DEFAULT_IDS = {
-  top: ['opentab', 'menu', 'pricelist', 'stock', 'shifts', 'switchuser'],
-  bottom: ['printticket', 'reprint', 'drawer', 'notes', 'calculator', 'scale', 'keyboard', 'numpad', 'shifts', 'accounts', 'tickets', 'invoices', 'credits', 'reports'],
+  top: ['opentab', 'stock', 'switchuser'],
+  bottom: ['printticket', 'reprint', 'drawer', 'notes', 'calculator', 'scale', 'accounts', 'tickets', 'reports'],
   quick: ['newproduct', 'saveaccount', 'sendkitchen'],
 };
 

@@ -3,6 +3,7 @@ dist/
 build/
 *.exe
 *.log
+electron/.cache/
 
 # Base de datos local (datos, no código)
 app/backend/data/*.db

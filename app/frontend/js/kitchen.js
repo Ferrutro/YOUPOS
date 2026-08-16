@@ -13,12 +13,38 @@ if (!requireAuth()) throw new Error('no auth');
 const user = getUser();
 
 const POLL_MS = 6000;
-const LATE_AFTER_MIN = 10;
 
 let orders = [];
 let knownIds = new Set();
 let firstLoad = true;
 let audioCtx = null;
+
+// ---------- Preferencias de esta pantalla (por equipo, no por negocio —
+// cada tablet de cocina puede tener su propio sonido/tiempos) ----------
+const SOUND_ENABLED_KEY = 'youpos_kitchen_sound_enabled';
+const SOUND_PRESET_KEY = 'youpos_kitchen_sound_preset';
+const SOUND_CUSTOM_KEY = 'youpos_kitchen_sound_custom';
+const WARNING_MIN_KEY = 'youpos_kitchen_warning_min';
+const EMERGENCY_MIN_KEY = 'youpos_kitchen_emergency_min';
+
+function getSoundEnabled() { return localStorage.getItem(SOUND_ENABLED_KEY) !== '0'; }
+function setSoundEnabled(v) { try { localStorage.setItem(SOUND_ENABLED_KEY, v ? '1' : '0'); } catch { /* localStorage lleno o bloqueado */ } }
+function getSoundPreset() { return localStorage.getItem(SOUND_PRESET_KEY) || 'chime'; }
+function setSoundPreset(v) { try { localStorage.setItem(SOUND_PRESET_KEY, v); } catch { /* localStorage lleno o bloqueado */ } }
+function getCustomSound() { try { return localStorage.getItem(SOUND_CUSTOM_KEY) || null; } catch { return null; } }
+
+function getWarningMin() { return Number(localStorage.getItem(WARNING_MIN_KEY)) || 10; }
+function setWarningMin(v) { try { localStorage.setItem(WARNING_MIN_KEY, String(v)); } catch { /* localStorage lleno o bloqueado */ } }
+function getEmergencyMin() { return Number(localStorage.getItem(EMERGENCY_MIN_KEY)) || 20; }
+function setEmergencyMin(v) { try { localStorage.setItem(EMERGENCY_MIN_KEY, String(v)); } catch { /* localStorage lleno o bloqueado */ } }
+
+// 'normal' -> nada especial; 'warning' -> se está tardando, amarillo;
+// 'emergency' -> ya se tardó demasiado, rojo.
+function urgencyLevel(mins) {
+  if (mins >= getEmergencyMin()) return 'emergency';
+  if (mins >= getWarningMin()) return 'warning';
+  return 'normal';
+}
 
 document.body.innerHTML = `
   <div class="kd-shell">
@@ -28,6 +54,7 @@ document.body.innerHTML = `
       <span class="kd-dot" id="kd-dot" title="Actualizando en vivo"></span>
       <div class="kd-spacer"></div>
       <div class="kd-clock" id="kd-clock">--:--</div>
+      <button class="kd-icon-btn" id="kd-history-btn" title="Historial de pedidos">${icon('clock', 18)}</button>
       <button class="kd-icon-btn" id="kd-settings-btn" title="Configuración">${icon('settings', 18)}</button>
       <button class="kd-icon-btn" id="kd-logout-btn" title="Salir">${icon('logout', 18)}</button>
     </div>
@@ -49,40 +76,23 @@ function tickClock() {
 tickClock();
 setInterval(tickClock, 15000);
 
-// ---------- Tuerca: configuración (modo oscuro/claro, y lo que se agregue después) ----------
-function openSettings() {
-  document.querySelectorAll('.kd-settings-overlay').forEach((m) => m.remove());
-  const overlay = document.createElement('div');
-  overlay.className = 'modal-overlay kd-settings-overlay';
-  const current = getTheme(THEME_KEY, 'dark');
-  overlay.innerHTML = `
-    <div class="modal kd-settings-modal">
-      <h3 style="margin-top:0;">Configuración de cocina</h3>
-      <button type="button" class="kd-settings-row" id="kd-theme-toggle">
-        <span>${icon(current === 'dark' ? 'sun' : 'moon', 20)}</span>
-        <span class="kd-settings-row-label">${current === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}</span>
-      </button>
-      <div class="modal-actions"><button class="ghost" id="kd-settings-close">Cerrar</button></div>
-    </div>
-  `;
-  document.body.appendChild(overlay);
-  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
-  overlay.querySelector('#kd-settings-close').addEventListener('click', () => overlay.remove());
-  overlay.querySelector('#kd-theme-toggle').addEventListener('click', () => {
-    const next = toggleTheme(THEME_KEY, 'dark');
-    overlay.remove();
-    openSettings();
-    toast(`Modo ${next === 'dark' ? 'oscuro' : 'claro'} activado.`, 'success');
-  });
-}
-document.getElementById('kd-settings-btn').addEventListener('click', openSettings);
+// ---------- Sonido de aviso (sintetizado, sin archivos externos — más un
+// sonido personalizado opcional que el usuario suba) ----------
+const SOUND_PRESETS = {
+  chime: { label: 'Timbre', tones: [880, 1175] },
+  bell: { label: 'Campana', tones: [660, 880, 1320] },
+  soft: { label: 'Suave', tones: [520] },
+};
+// Tamaño máximo de un sonido personalizado — se guarda como data URL en
+// localStorage (por equipo), que en la mayoría de navegadores tiene un
+// límite de unos 5-10 MB en total, así que se limita bastante por debajo.
+const MAX_CUSTOM_SOUND_BYTES = 700 * 1024;
 
-// ---------- Sonido de aviso (sintetizado, sin archivos externos) ----------
-function playChime() {
+function playTones(tones) {
   try {
     audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
     const now = audioCtx.currentTime;
-    [880, 1175].forEach((freq, i) => {
+    tones.forEach((freq, i) => {
       const osc = audioCtx.createOscillator();
       const gain = audioCtx.createGain();
       osc.type = 'sine';
@@ -95,6 +105,226 @@ function playChime() {
       osc.stop(now + i * 0.14 + 0.4);
     });
   } catch { /* si el navegador bloquea audio sin interacción previa, no pasa nada grave */ }
+}
+
+// Reproduce el sonido elegido sin importar si el aviso por sonido está
+// activado — lo usa el botón "Probar sonido" de configuración, para poder
+// escucharlo aunque esté apagado mientras se decide cuál dejar.
+function previewSound() {
+  const preset = getSoundPreset();
+  if (preset === 'custom') {
+    const dataUrl = getCustomSound();
+    if (!dataUrl) { toast('Todavía no subiste ningún sonido personalizado.', 'error'); return; }
+    try { new Audio(dataUrl).play(); } catch { /* algunos navegadores bloquean audio sin gesto reciente */ }
+    return;
+  }
+  playTones((SOUND_PRESETS[preset] || SOUND_PRESETS.chime).tones);
+}
+
+function playChime() {
+  if (!getSoundEnabled()) return;
+  previewSound();
+}
+
+// ---------- Tuerca: configuración ----------
+function openSettings() {
+  document.querySelectorAll('.kd-settings-overlay').forEach((m) => m.remove());
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay kd-settings-overlay';
+  const current = getTheme(THEME_KEY, 'dark');
+  const soundEnabled = getSoundEnabled();
+  const preset = getSoundPreset();
+  const hasCustomSound = !!getCustomSound();
+  const soundOptions = Object.entries(SOUND_PRESETS)
+    .map(([k, v]) => `<option value="${k}" ${preset === k ? 'selected' : ''}>${v.label}</option>`)
+    .join('') + (hasCustomSound ? `<option value="custom" ${preset === 'custom' ? 'selected' : ''}>Personalizado (subido)</option>` : '');
+
+  overlay.innerHTML = `
+    <div class="modal kd-settings-modal">
+      <h3 style="margin-top:0;">Configuración de cocina</h3>
+
+      <button type="button" class="kd-settings-row" id="kd-theme-toggle">
+        <span>${icon(current === 'dark' ? 'sun' : 'moon', 20)}</span>
+        <span class="kd-settings-row-label">${current === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}</span>
+      </button>
+
+      <div class="kd-settings-section">
+        <div class="kd-settings-section-title">Sonido</div>
+        <label class="kd-settings-check-row">
+          <input type="checkbox" id="kd-sound-enabled" ${soundEnabled ? 'checked' : ''} />
+          <span>Sonido al recibir un pedido nuevo</span>
+        </label>
+        <div class="field">
+          <label>Sonido</label>
+          <select id="kd-sound-preset">${soundOptions}</select>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button type="button" class="ghost" id="kd-sound-test" style="flex:1;">Probar sonido</button>
+          <label class="ghost kd-settings-upload-btn" for="kd-sound-upload">Subir sonido</label>
+          <input type="file" id="kd-sound-upload" accept="audio/*" style="display:none;" />
+        </div>
+      </div>
+
+      <div class="kd-settings-section">
+        <div class="kd-settings-section-title">Tiempos de aviso</div>
+        <div class="field">
+          <label>Advertencia (minutos) — para apurar el pedido</label>
+          <input type="number" id="kd-warning-min" min="1" value="${getWarningMin()}" />
+        </div>
+        <div class="field">
+          <label>Emergencia (minutos) — ya se tardó demasiado</label>
+          <input type="number" id="kd-emergency-min" min="1" value="${getEmergencyMin()}" />
+        </div>
+      </div>
+
+      <button type="button" class="kd-settings-row" id="kd-logout-row" style="color:var(--kd-danger);">
+        <span>${icon('logout', 20)}</span>
+        <span class="kd-settings-row-label">Cerrar sesión</span>
+      </button>
+
+      <div class="kd-settings-section">
+        <div class="kd-settings-section-title">Conectar otra tablet</div>
+        <p class="kd-settings-hint" id="kd-server-info">Buscando la dirección de este equipo…</p>
+      </div>
+
+      <div class="modal-actions"><button class="primary" id="kd-settings-close">Listo</button></div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+  overlay.querySelector('#kd-settings-close').addEventListener('click', () => overlay.remove());
+  overlay.querySelector('#kd-theme-toggle').addEventListener('click', () => {
+    const next = toggleTheme(THEME_KEY, 'dark');
+    overlay.remove();
+    openSettings();
+    toast(`Modo ${next === 'dark' ? 'oscuro' : 'claro'} activado.`, 'success');
+  });
+
+  overlay.querySelector('#kd-sound-enabled').addEventListener('change', (e) => setSoundEnabled(e.target.checked));
+  overlay.querySelector('#kd-sound-preset').addEventListener('change', (e) => setSoundPreset(e.target.value));
+  overlay.querySelector('#kd-sound-test').addEventListener('click', previewSound);
+  overlay.querySelector('#kd-sound-upload').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.size > MAX_CUSTOM_SOUND_BYTES) {
+      toast(`Ese sonido pesa demasiado (máximo ${Math.round(MAX_CUSTOM_SOUND_BYTES / 1024)} KB).`, 'error');
+      e.target.value = '';
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        localStorage.setItem(SOUND_CUSTOM_KEY, reader.result);
+        setSoundPreset('custom');
+        overlay.remove();
+        openSettings();
+        toast('Sonido personalizado guardado.', 'success');
+      } catch {
+        toast('No se pudo guardar el sonido en este equipo (sin espacio).', 'error');
+      }
+    };
+    reader.readAsDataURL(file);
+  });
+
+  overlay.querySelector('#kd-warning-min').addEventListener('change', (e) => {
+    const v = Math.max(1, Number(e.target.value) || 1);
+    setWarningMin(v);
+    updateTimers();
+  });
+  overlay.querySelector('#kd-emergency-min').addEventListener('change', (e) => {
+    const v = Math.max(1, Number(e.target.value) || 1);
+    setEmergencyMin(v);
+    updateTimers();
+  });
+
+  overlay.querySelector('#kd-logout-row').addEventListener('click', () => {
+    clearSession();
+    window.location.href = '/index.html';
+  });
+
+  // La dirección IP en sí no se puede "configurar" — el navegador de la
+  // otra tablet ya llega al servidor correcto con solo escribirla, porque
+  // esta pantalla pide todo con rutas relativas (/api/...). Lo único que
+  // hacía falta era mostrarla, para no tener que ir a buscarla a mano.
+  api
+    .get('/api/server-info')
+    .then(({ addresses, port }) => {
+      const hint = overlay.querySelector('#kd-server-info');
+      if (!hint) return;
+      hint.innerHTML = addresses.length
+        ? `Desde otra tablet en la misma red, entra a:<br>${addresses.map((a) => `<strong>http://${a}:${port}/kitchen.html</strong>`).join('<br>')}`
+        : 'No se encontró una dirección de red — revisa que el equipo esté conectado al WiFi/red local.';
+    })
+    .catch(() => {
+      const hint = overlay.querySelector('#kd-server-info');
+      if (hint) hint.textContent = 'No se pudo obtener la dirección del servidor.';
+    });
+}
+document.getElementById('kd-settings-btn').addEventListener('click', openSettings);
+
+// ---------- Historial: recuperar un ticket que se cerró por accidente ----------
+async function openHistoryModal() {
+  document.querySelectorAll('.kd-history-overlay').forEach((m) => m.remove());
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay kd-history-overlay';
+  overlay.innerHTML = `
+    <div class="modal kd-settings-modal" style="max-width:440px;">
+      <h3 style="margin-top:0;">Historial de pedidos</h3>
+      <p class="kd-settings-hint" style="margin-top:-6px; margin-bottom:12px;">Los últimos pedidos mandados a cocina — si cerraste alguno por accidente, lo puedes recuperar.</p>
+      <div id="kd-history-list"><p class="kd-settings-hint">Cargando…</p></div>
+      <div class="modal-actions"><button class="ghost" id="kd-history-close">Cerrar</button></div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+  overlay.querySelector('#kd-history-close').addEventListener('click', () => overlay.remove());
+
+  const listEl = overlay.querySelector('#kd-history-list');
+  try {
+    const { heldSales } = await api.get('/api/held-sales?kitchenHistory=1');
+    if (heldSales.length === 0) {
+      listEl.innerHTML = '<p class="kd-settings-hint">Todavía no se ha mandado ningún pedido a cocina.</p>';
+      return;
+    }
+    listEl.innerHTML = heldSales.map(historyRowHtml).join('');
+    listEl.querySelectorAll('[data-action="restore"]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        btn.textContent = 'Recuperando…';
+        try {
+          await api.post(`/api/held-sales/${btn.dataset.id}/kitchen-status`, { status: 'pending' });
+          overlay.remove();
+          await load();
+          toast('Ticket recuperado en el tablero.', 'success');
+        } catch (err) {
+          btn.disabled = false;
+          btn.textContent = 'Recuperar';
+          toast(err.message, 'error');
+        }
+      });
+    });
+  } catch (err) {
+    listEl.innerHTML = `<p class="kd-settings-hint">${err.message}</p>`;
+  }
+}
+document.getElementById('kd-history-btn').addEventListener('click', openHistoryModal);
+
+function historyRowHtml(order) {
+  const label = order.order_type ? order.order_type.label : order.customer_name || 'Ticket vacío';
+  const isOnBoard = !!order.kitchen_status;
+  return `
+    <div class="kd-history-row">
+      <div style="flex:1; min-width:0;">
+        <div style="font-weight:700; font-size:14px;">${label}</div>
+        <div class="kd-settings-hint" style="margin:2px 0 0;">${formatDateTime(order.kitchen_sent_at)} · ${order.user_name} · ${order.items.length} artículo(s)</div>
+      </div>
+      ${
+        isOnBoard
+          ? '<span class="kd-history-badge">En el tablero</span>'
+          : `<button type="button" class="ghost" data-action="restore" data-id="${order.id}">Recuperar</button>`
+      }
+    </div>
+  `;
 }
 
 // ---------- Tiempo ----------
@@ -112,6 +342,9 @@ function formatElapsed(mins) {
 }
 function formatClock(dateStr) {
   return parseDbDate(dateStr).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+}
+function formatDateTime(dateStr) {
+  return parseDbDate(dateStr).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' });
 }
 
 // ---------- 30 colores de ticket ----------
@@ -169,15 +402,16 @@ function itemsHtml(order) {
 
 function cardHtml(order) {
   const mins = minutesSince(order.kitchen_sent_at || order.created_at);
-  const isLate = mins >= LATE_AFTER_MIN;
+  const level = urgencyLevel(mins);
+  const levelClass = level === 'normal' ? '' : `kd-${level}`;
   const label = order.order_type ? order.order_type.label : order.customer_name || 'Ticket vacío';
 
   return `
-    <div class="kd-card ${isLate ? 'kd-late' : ''}" data-id="${order.id}">
+    <div class="kd-card ${levelClass}" data-id="${order.id}">
       <div class="kd-card-head" style="background:${ticketColor(order.id)};" data-action="dismiss" title="Tocar para cerrar el ticket">
         <div class="kd-card-title">${label}</div>
         <div class="kd-card-sub">${formatClock(order.created_at)}, ${order.user_name}</div>
-        <div class="kd-timer ${isLate ? 'kd-late' : ''}">${formatElapsed(mins)}</div>
+        <div class="kd-timer ${levelClass}">${formatElapsed(mins)}</div>
       </div>
       <div class="kd-card-body">
         <div class="kd-items">${itemsHtml(order)}</div>
@@ -207,12 +441,14 @@ function updateTimers() {
     const order = orders.find((o) => o.id === Number(card.dataset.id));
     if (!order) return;
     const mins = minutesSince(order.kitchen_sent_at || order.created_at);
-    const isLate = mins >= LATE_AFTER_MIN;
-    card.classList.toggle('kd-late', isLate);
+    const level = urgencyLevel(mins);
+    card.classList.remove('kd-warning', 'kd-emergency');
+    if (level !== 'normal') card.classList.add(`kd-${level}`);
     const timer = card.querySelector('.kd-timer');
     if (timer) {
       timer.textContent = formatElapsed(mins);
-      timer.classList.toggle('kd-late', isLate);
+      timer.classList.remove('kd-warning', 'kd-emergency');
+      if (level !== 'normal') timer.classList.add(`kd-${level}`);
     }
   });
 }
@@ -288,7 +524,11 @@ document.getElementById('kd-board').addEventListener('click', (e) => {
 function orderSignature(o) {
   return `${o.id}:${o.kitchen_sent_at}:${o.note || ''}:${JSON.stringify(o.items)}:${JSON.stringify(o.order_type)}`;
 }
-let lastSignature = '';
+// null (no un string vacío) para que el primer load() SIEMPRE dibuje el
+// tablero, aunque no haya ningún ticket — si no, un tablero vacío la
+// primera vez (firma '') coincidiría con este valor inicial y el mensaje
+// "Cargando…" se quedaría para siempre en vez de mostrar "sin tickets".
+let lastSignature = null;
 
 async function load() {
   try {
