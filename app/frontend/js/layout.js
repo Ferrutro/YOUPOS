@@ -12,10 +12,11 @@ applyTheme(getTheme(THEME_KEY, 'light'));
 // Un solo menú de navegación (panel deslizante desde la derecha), igual en
 // TODAS las pantallas — punto de venta incluido — para que desde cualquier
 // lado se pueda volver al POS, ir a otra sección, o cerrar sesión.
+// Comandero y Cocina ya NO viven aquí — se van a convertir en apps de
+// Android (APK) aparte, así que no tiene caso que aparezcan como opción
+// dentro del punto de venta web.
 const NAV_ITEMS = [
   { label: 'Punto de venta', ico: 'home', href: '/pos.html', roles: ['admin', 'manager', 'cashier'] },
-  { label: 'Comandero', ico: 'tabletSmartphone', href: '/comandero.html', roles: ['admin', 'manager', 'cashier'] },
-  { label: 'Cocina', ico: 'utensils', href: '/kitchen.html', roles: ['admin', 'manager', 'cashier'] },
   { label: 'Ventas / Tickets', ico: 'ticket', href: '/sales.html', roles: ['admin', 'manager', 'cashier'] },
   { label: 'Inventario', ico: 'box', href: '/inventory.html', roles: ['admin', 'manager'] },
   { label: 'Corte de caja', ico: 'scissors', href: '/cash.html', roles: ['admin', 'manager', 'cashier'] },
