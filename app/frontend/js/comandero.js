@@ -1,12 +1,15 @@
-import { api, requireAuth, getUser, clearSession, toast, formatMoney } from './api.js';
+import { api, getToken, getUser, setSession, clearSession, toast, formatMoney, getApiBase, setApiBase, setLoginRedirectPath } from './api.js';
 import { icon } from './icons.js';
 import { getTheme, applyTheme } from './theme.js';
 
 applyTheme(getTheme('youpos_theme', 'light'));
 
-if (!requireAuth()) throw new Error('redirect');
+// Comandero es una app aparte (empacada como APK con Capacitor) — no trae
+// index.html consigo, así que trae su propio login (ver renderLoginScreen)
+// en vez de redirigir a la pantalla de login compartida del POS.
+setLoginRedirectPath('/comandero.html');
 
-const user = getUser();
+let user = null;
 
 // ---------- Estado ----------
 let products = [];
@@ -45,6 +48,8 @@ shell.className = 'pos-shell comandero-shell';
 document.body.innerHTML = '';
 document.body.appendChild(shell);
 
+let pollingStarted = false;
+
 async function init() {
   shell.innerHTML = `<div style="margin:auto; color:var(--pos-ink-muted);">Cargando…</div>`;
   try {
@@ -65,6 +70,12 @@ async function init() {
     return;
   }
   renderShell();
+  // Solo arranca el sondeo de fondo una vez que de verdad hay sesión — antes
+  // de eso no tiene caso pedirle nada al servidor.
+  if (!pollingStarted) {
+    pollingStarted = true;
+    setInterval(pollHeldSalesBackground, HELD_SALES_POLL_MS);
+  }
 }
 
 function renderShell() {
@@ -829,7 +840,10 @@ async function cancelCurrentAccount() {
 
 function logout() {
   clearSession();
-  window.location.href = '/index.html';
+  // No hay a dónde "navegar" (Comandero no trae index.html) — recargar
+  // simplemente vuelve a pasar por boot(), que al no encontrar sesión
+  // muestra el login de nuevo.
+  window.location.reload();
 }
 
 // Refresca held_sales en segundo plano cada pocos segundos, sin avisos y
@@ -845,5 +859,96 @@ async function pollHeldSalesBackground() {
   }
 }
 
-init();
-setInterval(pollHeldSalesBackground, HELD_SALES_POLL_MS);
+// ---------- Login (Comandero trae el suyo — no depende de index.html) ----------
+// Empacado como APK (Capacitor), la página ya no vive en el mismo servidor
+// que el backend — por eso, ahí SÍ es obligatorio poner la dirección antes
+// de poder entrar (en un navegador normal, servido por el propio backend,
+// no hace falta nada de esto).
+function isNativeApp() {
+  return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+}
+
+function renderLoginScreen() {
+  const savedBase = getApiBase();
+  const needsServer = isNativeApp();
+  shell.innerHTML = `
+    <div class="login-screen">
+      <div class="login-card">
+        <div class="brand"><img src="/img/YOUPOS.png" alt="YOUPOS" style="height:64px; width:auto; display:block; margin:0 auto 8px;" /> Comandero</div>
+        <div class="subtitle">Inicia sesión para continuar</div>
+        <div id="cmd-login-error" class="login-error"></div>
+        <form id="cmd-login-form">
+          <div class="field">
+            <label for="cmd-login-user">Usuario</label>
+            <input type="text" id="cmd-login-user" autocomplete="username" required />
+          </div>
+          <div class="field">
+            <label for="cmd-login-pass">Contraseña</label>
+            <input type="password" id="cmd-login-pass" autocomplete="current-password" required />
+          </div>
+          <button type="submit" class="primary" style="width:100%" id="cmd-login-btn">Entrar</button>
+        </form>
+        <details style="margin-top:18px;" ${needsServer ? 'open' : ''}>
+          <summary style="cursor:pointer; font-size:12.5px; color:var(--text-secondary);">Dirección del servidor${needsServer ? ' (obligatoria)' : ''}</summary>
+          <p class="text-secondary" style="font-size:11.5px; margin:8px 0;">
+            ${needsServer ? 'Esta app necesita saber a qué computadora conectarse.' : 'Solo hace falta si esta app se instaló aparte (APK).'}
+            La dirección la ves en la pantalla de cocina, en Configuración.
+          </p>
+          <div class="field">
+            <input type="text" id="cmd-server-url" placeholder="http://192.168.1.23:3000" value="${savedBase}" />
+          </div>
+          <button type="button" class="ghost" style="width:100%;" id="cmd-server-save">Guardar dirección</button>
+        </details>
+      </div>
+    </div>
+  `;
+
+  shell.querySelector('#cmd-server-save').addEventListener('click', () => {
+    const url = shell.querySelector('#cmd-server-url').value.trim();
+    setApiBase(url);
+    toast(url ? `Servidor guardado: ${url}` : 'Se usará la misma dirección de esta página.', 'success');
+  });
+
+  const form = shell.querySelector('#cmd-login-form');
+  const errorBox = shell.querySelector('#cmd-login-error');
+  const btn = shell.querySelector('#cmd-login-btn');
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    errorBox.style.display = 'none';
+
+    const serverUrl = shell.querySelector('#cmd-server-url').value.trim();
+    if (needsServer && !serverUrl) {
+      errorBox.textContent = 'Pon la dirección del servidor antes de entrar (abre "Dirección del servidor" arriba).';
+      errorBox.style.display = 'block';
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Entrando…';
+    setApiBase(serverUrl);
+    try {
+      const username = shell.querySelector('#cmd-login-user').value.trim();
+      const password = shell.querySelector('#cmd-login-pass').value;
+      const result = await api.post('/api/auth/login', { username, password });
+      setSession(result.token, result.user);
+      user = result.user;
+      await init();
+    } catch (err) {
+      errorBox.textContent = err.message || 'No se pudo iniciar sesión.';
+      errorBox.style.display = 'block';
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Entrar';
+    }
+  });
+}
+
+function boot() {
+  if (getToken()) {
+    user = getUser();
+    init();
+  } else {
+    renderLoginScreen();
+  }
+}
+boot();

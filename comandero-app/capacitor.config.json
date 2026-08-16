@@ -1,0 +1,8 @@
+{
+  "appId": "com.youpos.comandero",
+  "appName": "Comandero",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "http"
+  }
+}

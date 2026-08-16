@@ -5,6 +5,16 @@ build/
 *.log
 electron/.cache/
 
+# comandero-app (Capacitor/Android) — www/ se genera desde app/frontend
+# (ver sync-www.js), y local.properties trae la ruta local al Android SDK.
+comandero-app/www/
+comandero-app/android/local.properties
+comandero-app/android/.gradle/
+comandero-app/android/.idea/
+comandero-app/.gradle-tmp/
+*.keystore
+*.jks
+
 # Base de datos local (datos, no código)
 app/backend/data/*.db
 app/backend/data/*.db-shm

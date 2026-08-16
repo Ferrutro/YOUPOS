@@ -2,6 +2,28 @@
 
 const TOKEN_KEY = 'pos_token';
 const USER_KEY = 'pos_user';
+const API_BASE_KEY = 'youpos_api_base';
+
+// Dirección del servidor (ej. "http://192.168.1.23:3000") — vacío por
+// defecto, que es lo correcto cuando la página se sirve DESDE el mismo
+// backend (POS, Cocina, o Comandero probado en un navegador normal): ahí
+// las rutas relativas (/api/...) ya apuntan al lugar correcto solas. Solo
+// hace falta configurarlo cuando la app vive empacada aparte (ej. el APK
+// de Comandero), donde /api/... ya no comparte origen con el backend.
+export function getApiBase() {
+  try { return localStorage.getItem(API_BASE_KEY) || ''; } catch { return ''; }
+}
+export function setApiBase(url) {
+  try { localStorage.setItem(API_BASE_KEY, (url || '').trim().replace(/\/+$/, '')); } catch { /* almacenamiento no disponible */ }
+}
+
+// A dónde mandar cuando hace falta iniciar sesión (o cuando expiró). Por
+// defecto la pantalla de login compartida — Comandero (que empacado no la
+// trae) lo cambia por su propia pantalla, que trae su login incluido.
+let loginRedirectPath = '/index.html';
+export function setLoginRedirectPath(path) {
+  loginRedirectPath = path;
+}
 
 export function getToken() {
   return localStorage.getItem(TOKEN_KEY);
@@ -27,7 +49,7 @@ export function clearSession() {
 
 export function requireAuth() {
   if (!getToken()) {
-    window.location.href = '/index.html';
+    window.location.href = loginRedirectPath;
     return false;
   }
   return true;
@@ -68,12 +90,20 @@ export async function apiFetch(path, options = {}) {
   const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
-  const res = await fetch(path, { ...options, headers });
+  const res = await fetch(getApiBase() + path, { ...options, headers });
 
   let data = null;
   const text = await res.text();
   if (text) {
-    try { data = JSON.parse(text); } catch { data = null; }
+    try {
+      data = JSON.parse(text);
+    } catch {
+      // Si la respuesta no es JSON (ej. le pegamos a la dirección
+      // equivocada y contestó otra cosa, como una página HTML), es mejor
+      // avisar claro que dejar que algo más adelante truene con un
+      // "cannot read properties of null" sin explicar por qué.
+      throw new ApiError(res.status, 'Respuesta inesperada del servidor. Revisa que la dirección configurada sea la correcta.');
+    }
   }
 
   // Solo forzamos el redirect a login si YA había una sesión y el servidor la
@@ -81,7 +111,7 @@ export async function apiFetch(path, options = {}) {
   // de login fallido), dejamos que el error se muestre normalmente.
   if (res.status === 401 && token) {
     clearSession();
-    window.location.href = '/index.html';
+    window.location.href = loginRedirectPath;
     throw new ApiError(401, 'Sesión expirada');
   }
 
