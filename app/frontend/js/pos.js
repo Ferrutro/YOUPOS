@@ -28,6 +28,20 @@ let toolbarLayout = { top: null, bottom: null, quick: null };
 let currentOrderType = null; // { type, label, detail, customer_name } | null = sin cuenta abierta todavía
 let currentAccountHeldId = null; // id en held_sales que respalda la cuenta en pantalla, o null si todavía no se ha guardado
 
+// "Foto" del carrito + tipo de cuenta tal como quedaron la última vez que se
+// guardó — null = todavía nunca se guardó. Además de servir para el aviso de
+// "¿descartar cambios?", el sondeo de fondo la usa para saber si es seguro
+// jalar solo lo último de otra terminal (POS o Comandero) sin pisar algo que
+// se esté escribiendo aquí mismo ahorita.
+let lastSavedSnapshot = null;
+let warnedAboutExternalChange = false;
+function currentSnapshot() {
+  return JSON.stringify({ items: cart, order_type: currentOrderType });
+}
+function hasUnsavedChanges() {
+  return cart.length > 0 && currentSnapshot() !== lastSavedSnapshot;
+}
+
 // Valor especial para el <select> de "Cliente" cuando la cuenta abierta trae
 // un nombre escrito a mano (ej. "Familia Pérez" al abrir la Mesa 5) que no
 // corresponde a ningún cliente registrado — se muestra igual, nada más no
@@ -718,7 +732,7 @@ function openLineItemModal(lineId) {
     refreshQty();
   });
 
-  let workingPerson = item.person || 1;
+  let workingPerson = item.person || null; // sin selección hasta que el usuario elija una persona
   function maxPersonInCart() {
     return cart.reduce((m, i) => Math.max(m, i.person || 1), 1);
   }
@@ -899,6 +913,8 @@ async function newSale() {
   ticketNote = '';
   selectedCustomerId = null;
   currentAccountHeldId = null;
+  lastSavedSnapshot = null;
+  warnedAboutExternalChange = false;
   setOrderType(null);
   renderCustomerOptions();
   renderCart();
@@ -1006,6 +1022,8 @@ async function persistCurrentAccount() {
       const res = await api.post('/api/held-sales', payload);
       currentAccountHeldId = res.id;
     }
+    lastSavedSnapshot = currentSnapshot();
+    warnedAboutExternalChange = false;
   } catch (err) {
     toast(err.message, 'error');
   }
@@ -1037,15 +1055,13 @@ async function startNewAccount(orderType) {
   toast(`Cuenta abierta: ${orderType.label}.`, 'success');
 }
 
-async function switchToHeldAccount(id) {
-  const held = heldSales.find((h) => h.id === id);
-  if (!held) return;
-  await persistCurrentAccount();
-
-  // Cada línea recibe un lineId nuevo al restaurar (las cuentas guardadas antes
-  // de esta función no traían lineId, y aunque lo trajeran, así se evita
-  // cualquier choque con líneas de otra cuenta que ya estén en pantalla).
-  const restoredCart = held.items.map((i) => {
+// Reconstruye las líneas del carrito a partir de lo guardado en held_sales
+// (items ya no traen la forma exacta del carrito en pantalla — cada línea
+// recibe un lineId propio nuevo, para no chocar con lo que ya hubiera en
+// pantalla). La usan tanto el cambio manual de cuenta como el sondeo de
+// fondo que mantiene sincronizadas dos pantallas en la misma cuenta.
+function rebuildCartFromHeld(held, { warnMissing = false } = {}) {
+  return held.items.map((i) => {
     const lineId = nextLineId++;
     const product = products.find((p) => p.id === i.productId);
     if (product) {
@@ -1062,20 +1078,28 @@ async function switchToHeldAccount(id) {
         modifiers: i.modifiers || [],
         ingredients: i.ingredients || [],
         note: i.note || '',
-        person: i.person || 1,
+        person: i.person,
       };
     }
-    toast(`"${i.name}" ya no está disponible en el catálogo; se agregó con el precio guardado.`, 'info');
+    if (warnMissing) toast(`"${i.name}" ya no está disponible en el catálogo; se agregó con el precio guardado.`, 'info');
     return { ...i, lineId, stock: 0, trackStock: false };
   });
+}
 
-  cart = restoredCart;
+async function switchToHeldAccount(id) {
+  const held = heldSales.find((h) => h.id === id);
+  if (!held) return;
+  await persistCurrentAccount();
+
+  cart = rebuildCartFromHeld(held, { warnMissing: true });
   ticketNote = held.note || '';
   selectedCustomerId = held.customer_id || null;
   setOrderType(held.order_type || null);
   currentAccountHeldId = held.id; // seguimos respaldados por el MISMO id, no se borra ni se recrea
   renderCustomerOptions(); // refleja el cliente real o el nombre escrito de esta cuenta en "Cliente"
   renderCart();
+  lastSavedSnapshot = currentSnapshot(); // recién cargada, coincide con lo guardado
+  warnedAboutExternalChange = false;
   await refreshHeldSales();
   toast('Cuenta abierta.', 'success');
 }
@@ -1138,6 +1162,8 @@ async function discardCurrentAccount() {
   ticketNote = '';
   selectedCustomerId = null;
   currentAccountHeldId = null;
+  lastSavedSnapshot = null;
+  warnedAboutExternalChange = false;
   setOrderType(null);
   renderCustomerOptions();
   renderCart();
@@ -1977,6 +2003,8 @@ function openCheckoutModal() {
       cart = [];
       ticketNote = '';
       currentAccountHeldId = null;
+      lastSavedSnapshot = null;
+      warnedAboutExternalChange = false;
       setOrderType(null);
       renderCart();
       await loadAll();
@@ -2409,18 +2437,50 @@ function openScaleModal() {
   });
 }
 
-// Refresca held_sales en segundo plano cada pocos segundos, sin avisos y sin
-// tocar la cuenta que esté en pantalla — así lo que se guarda o envía desde
-// el Comandero (u otra terminal) se refleja solo en listas como "Cuentas" o
-// "Imprimir cuenta", sin tener que reabrir nada ni recargar la página.
+// Refresca held_sales en segundo plano cada pocos segundos — se usa tanto
+// para listas como "Cuentas"/"Imprimir cuenta" como para mantener
+// sincronizada la cuenta que esté en pantalla si alguien más (el Comandero,
+// u otra terminal) le movió algo. Sin avisos ni interrumpir nada por su
+// cuenta: solo jala lo nuevo si aquí no hay cambios sin guardar todavía.
 const HELD_SALES_POLL_MS = 8000;
 async function pollHeldSalesBackground() {
   try {
     const res = await api.get('/api/held-sales');
     heldSales = res.heldSales;
+    syncActiveAccountIfClean();
   } catch {
     // silencioso — es un refresco de fondo, no una acción que el usuario pidió
   }
+}
+
+// Si la cuenta abierta en pantalla cambió en otro lado (otra terminal la
+// guardó o envió a cocina) y aquí no hay ediciones locales sin guardar,
+// refleja lo nuevo sola — así dos pantallas abiertas en la misma cuenta (ej.
+// el POS y la tablet del Comandero) se mantienen al día entre sí. Si SÍ hay
+// cambios sin guardar aquí, no se pisa nada: solo se avisa una vez.
+function syncActiveAccountIfClean() {
+  if (!currentAccountHeldId) return;
+  const held = heldSales.find((h) => h.id === currentAccountHeldId);
+  if (!held) return; // se cerró o se borró en otro lado; eso no se toca aquí
+
+  const serverSnapshot = JSON.stringify({ items: held.items, order_type: held.order_type });
+  if (serverSnapshot === currentSnapshot()) return; // ya está igual, nada que hacer
+
+  if (hasUnsavedChanges()) {
+    if (!warnedAboutExternalChange) {
+      warnedAboutExternalChange = true;
+      toast('Esta cuenta se actualizó en otra pantalla. Guarda pronto para no perder tus cambios de aquí.', 'info');
+    }
+    return;
+  }
+
+  cart = rebuildCartFromHeld(held);
+  ticketNote = held.note || '';
+  selectedCustomerId = held.customer_id || null;
+  setOrderType(held.order_type || null);
+  renderCustomerOptions();
+  renderCart();
+  lastSavedSnapshot = currentSnapshot();
 }
 
 // ---------- Arranque ----------
