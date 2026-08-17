@@ -1,0 +1,8 @@
+{
+  "appId": "com.youpos.cocina",
+  "appName": "Cocina",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "http"
+  }
+}

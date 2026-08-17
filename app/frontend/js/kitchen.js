@@ -2,15 +2,21 @@
 // la cocina. Un solo tablero de tickets (sin columnas de estado): cada
 // tarjeta tiene su propio color para que, además del nombre, se reconozca
 // de un vistazo. Tocar el encabezado cierra el ticket (ya se entregó).
-import { api, requireAuth, getUser, clearSession, toast } from './api.js';
+import { api, getToken, setSession, clearSession, toast, getApiBase, setApiBase, setLoginRedirectPath } from './api.js';
 import { icon } from './icons.js';
 import { getTheme, applyTheme, toggleTheme } from './theme.js';
 
 const THEME_KEY = 'youpos_kitchen_theme';
 applyTheme(getTheme(THEME_KEY, 'dark'));
 
-if (!requireAuth()) throw new Error('no auth');
-const user = getUser();
+// Cocina también se empaca como APK aparte (Capacitor) — no trae index.html
+// consigo, así que trae su propio login en vez de depender del compartido.
+setLoginRedirectPath('/kitchen.html');
+
+if (!getToken()) {
+  renderLoginScreen();
+  throw new Error('no auth'); // no sigue armando el tablero sin sesión
+}
 
 const POLL_MS = 6000;
 
@@ -66,7 +72,10 @@ document.body.innerHTML = `
 
 document.getElementById('kd-logout-btn').addEventListener('click', () => {
   clearSession();
-  window.location.href = '/index.html';
+  // Recargar simplemente vuelve a pasar por el chequeo de sesión de arriba,
+  // que al no encontrar token muestra el login de nuevo — no hace falta
+  // "navegar" a ningún lado (Cocina empacada no trae index.html).
+  window.location.reload();
 });
 
 // ---------- Reloj ----------
@@ -239,7 +248,7 @@ function openSettings() {
 
   overlay.querySelector('#kd-logout-row').addEventListener('click', () => {
     clearSession();
-    window.location.href = '/index.html';
+    window.location.reload();
   });
 
   // La dirección IP en sí no se puede "configurar" — el navegador de la
@@ -563,3 +572,87 @@ setInterval(() => {
 
 load();
 setInterval(load, POLL_MS);
+
+// ---------- Login (Cocina trae el suyo — no depende de index.html) ----------
+// Empacada como APK (Capacitor), la página ya no vive en el mismo servidor
+// que el backend — por eso, ahí SÍ es obligatorio poner la dirección antes
+// de poder entrar (en un navegador normal, servido por el propio backend, no
+// hace falta nada de esto).
+function isNativeApp() {
+  return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+}
+
+function renderLoginScreen() {
+  const savedBase = getApiBase();
+  const needsServer = isNativeApp();
+  document.body.innerHTML = `
+    <div class="login-screen">
+      <div class="login-card">
+        <div class="brand"><img src="/img/YOUPOS.png" alt="YOUPOS" style="height:64px; width:auto; display:block; margin:0 auto 8px;" /> Cocina</div>
+        <div class="subtitle">Inicia sesión para continuar</div>
+        <div id="kd-login-error" class="login-error"></div>
+        <form id="kd-login-form">
+          <div class="field">
+            <label for="kd-login-user">Usuario</label>
+            <input type="text" id="kd-login-user" autocomplete="username" required />
+          </div>
+          <div class="field">
+            <label for="kd-login-pass">Contraseña</label>
+            <input type="password" id="kd-login-pass" autocomplete="current-password" required />
+          </div>
+          <button type="submit" class="primary" style="width:100%" id="kd-login-btn">Entrar</button>
+        </form>
+        <details style="margin-top:18px;" ${needsServer ? 'open' : ''}>
+          <summary style="cursor:pointer; font-size:12.5px; color:var(--text-secondary);">Dirección del servidor${needsServer ? ' (obligatoria)' : ''}</summary>
+          <p class="text-secondary" style="font-size:11.5px; margin:8px 0;">
+            ${needsServer ? 'Esta app necesita saber a qué computadora conectarse.' : 'Solo hace falta si esta app se instaló aparte (APK).'}
+            Es la misma dirección que usas para conectar el Comandero.
+          </p>
+          <div class="field">
+            <input type="text" id="kd-server-url" placeholder="http://192.168.1.23:3000" value="${savedBase}" />
+          </div>
+          <button type="button" class="ghost" style="width:100%;" id="kd-server-save">Guardar dirección</button>
+        </details>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('kd-server-save').addEventListener('click', () => {
+    const url = document.getElementById('kd-server-url').value.trim();
+    setApiBase(url);
+    toast(url ? `Servidor guardado: ${url}` : 'Se usará la misma dirección de esta página.', 'success');
+  });
+
+  const form = document.getElementById('kd-login-form');
+  const errorBox = document.getElementById('kd-login-error');
+  const btn = document.getElementById('kd-login-btn');
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    errorBox.style.display = 'none';
+
+    const serverUrl = document.getElementById('kd-server-url').value.trim();
+    if (needsServer && !serverUrl) {
+      errorBox.textContent = 'Pon la dirección del servidor antes de entrar (abre "Dirección del servidor" arriba).';
+      errorBox.style.display = 'block';
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Entrando…';
+    setApiBase(serverUrl);
+    try {
+      const username = document.getElementById('kd-login-user').value.trim();
+      const password = document.getElementById('kd-login-pass').value;
+      const result = await api.post('/api/auth/login', { username, password });
+      setSession(result.token, result.user);
+      // Recargar vuelve a evaluar este archivo desde cero, y esta vez sí
+      // encuentra el token y arma el tablero normalmente.
+      window.location.reload();
+    } catch (err) {
+      errorBox.textContent = err.message || 'No se pudo iniciar sesión.';
+      errorBox.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'Entrar';
+    }
+  });
+}

@@ -12,6 +12,14 @@ comandero-app/android/local.properties
 comandero-app/android/.gradle/
 comandero-app/android/.idea/
 comandero-app/.gradle-tmp/
+
+# cocina-app (Capacitor/Android) — misma idea que comandero-app
+cocina-app/www/
+cocina-app/android/local.properties
+cocina-app/android/.gradle/
+cocina-app/android/.idea/
+cocina-app/.gradle-tmp/
+
 *.keystore
 *.jks
 
