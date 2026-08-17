@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const APK_PATH = path.join(__dirname, 'android', 'app', 'build', 'outputs', 'apk', 'debug', 'app-debug.apk');
-const PORT = 8080;
+const PORT = 8081;
 
 http.createServer((req, res) => {
   const content = fs.readFileSync(APK_PATH);
